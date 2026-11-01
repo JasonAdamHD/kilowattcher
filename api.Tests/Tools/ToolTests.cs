@@ -1,6 +1,8 @@
 using System.Text.Json;
+using Kilowattcher.Api.Rag;
 using Kilowattcher.Api.Tests.TestSupport;
 using Kilowattcher.Api.Tools;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Kilowattcher.Api.Tests.Tools;
 
@@ -91,17 +93,10 @@ public class ToolTests
     }
 
     [Fact]
-    public void Search_docs_stub_returns_no_results()
-    {
-        var result = Assert.IsType<DocSearchResult>(new SearchDocsTool().Execute(Args(new { query = "reserve percentage" })));
-
-        Assert.Empty(result.Results);
-    }
-
-    [Fact]
     public void Every_tool_schema_is_valid_strict_json_schema()
     {
-        ITool[] tools = [new BatteryStatusTool(), new RateScheduleTool(Clock), new SolarForecastTool(Clock), new SearchDocsTool()];
+        ITool[] tools = [new BatteryStatusTool(), new RateScheduleTool(Clock), new SolarForecastTool(Clock),
+            new SearchDocsTool(TestIndex.Provider(DocIndex.Empty), new FakeEmbeddingClient(), NullLogger<SearchDocsTool>.Instance)];
 
         foreach (var tool in tools)
         {

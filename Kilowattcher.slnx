@@ -1,4 +1,5 @@
 <Solution>
   <Project Path="api/Kilowattcher.Api.csproj" />
   <Project Path="api.Tests/Kilowattcher.Api.Tests.csproj" />
+  <Project Path="tools/embed/Kilowattcher.Embed.csproj" />
 </Solution>

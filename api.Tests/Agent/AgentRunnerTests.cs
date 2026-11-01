@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Kilowattcher.Api.Agent;
+using Kilowattcher.Api.Rag;
 using Kilowattcher.Api.Tests.TestSupport;
 using Kilowattcher.Api.Tools;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -15,10 +16,13 @@ public class AgentRunnerTests
     /// <summary>The real tools, with any extra tool added or replacing the one with the same name.</summary>
     private AgentRunner CreateRunner(params ITool[] extraTools)
     {
-        ITool[] defaults = [new BatteryStatusTool(), new RateScheduleTool(Clock), new SolarForecastTool(Clock), new SearchDocsTool()];
+        ITool[] defaults = [new BatteryStatusTool(), new RateScheduleTool(Clock), new SolarForecastTool(Clock), Search(TestIndex.ThreeAxes())];
         var tools = defaults.Where(d => extraTools.All(e => e.Name != d.Name)).Concat(extraTools);
         return new AgentRunner(_model, new ToolRegistry(tools), Clock, NullLogger<AgentRunner>.Instance);
     }
+
+    private static SearchDocsTool Search(DocIndex index) =>
+        new(TestIndex.Provider(index), new FakeEmbeddingClient(), NullLogger<SearchDocsTool>.Instance);
 
     private Task<AgentResult> Ask(string question, AgentRunner? runner = null) =>
         (runner ?? CreateRunner()).RunAsync([new UserItem(question)], CancellationToken.None);
@@ -193,7 +197,26 @@ public class AgentRunnerTests
 
         var result = await Ask("What does reserve percentage mean?", CreateRunner(new FixedSearchTool("manual#reserve")));
 
-        Assert.Equal(["manual#reserve"], result.Citations);
+        var citation = Assert.Single(result.Citations);
+        Assert.Equal("manual#reserve", citation.Id);
+        Assert.Equal("Battery manual", citation.Title);
+        Assert.Equal("Reserve keeps charge for outages.", citation.Text);
+    }
+
+    [Fact]
+    public async Task Real_search_results_become_citable_passages()
+    {
+        // FakeEmbeddingClient points every query along the first axis: the reserve-percentage chunk.
+        _model
+            .Then(Steps.Call("search_docs", """{"query":"reserve percentage"}"""))
+            .Then(Steps.Final("It's the charge kept for outages.", citations: ["battery-manual#reserve-percentage"]));
+
+        var result = await Ask("What does reserve percentage mean?");
+
+        Assert.Equal("battery-manual#reserve-percentage", Assert.Single(result.Citations).Id);
+        var hits = result.ToolCalls[0].Result.GetProperty("results");
+        Assert.Equal(3, hits.GetArrayLength());
+        Assert.Equal("battery-manual#reserve-percentage", hits[0].GetProperty("id").GetString());
     }
 
     [Fact]
@@ -221,7 +244,8 @@ public class AgentRunnerTests
         public string Name => "explode";
         public string Description => "Always throws.";
         public string ParametersSchema => ToolArguments.NoArgumentsSchema;
-        public object Execute(JsonElement arguments) => throw new InvalidOperationException("boom");
+        public Task<object> ExecuteAsync(JsonElement arguments, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("boom");
     }
 
     /// <summary>Overrides the stub so citation keeping can be tested before Stage 4.</summary>
@@ -230,7 +254,7 @@ public class AgentRunnerTests
         public string Name => "search_docs";
         public string Description => "Test search.";
         public string ParametersSchema => ToolArguments.NoArgumentsSchema;
-        public object Execute(JsonElement arguments) =>
-            new DocSearchResult([new DocChunk(id, "Battery manual", "Reserve", "Reserve keeps charge for outages.")], null);
+        public Task<object> ExecuteAsync(JsonElement arguments, CancellationToken cancellationToken) =>
+            Task.FromResult<object>(new DocSearchResult([new DocSearchHit(id, "Battery manual", "Reserve", "Reserve keeps charge for outages.", 0.9)], null));
     }
 }
