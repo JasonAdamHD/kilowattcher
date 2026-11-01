@@ -79,7 +79,10 @@ public class AuthEndpointTests(KilowattcherFactory factory) : IClassFixture<Kilo
 
         Assert.Equal(HttpStatusCode.TooManyRequests, blocked.StatusCode);
         Assert.Equal("rate_limited", await ErrorCode(blocked));
-        Assert.True(blocked.Headers.Contains("Retry-After"));
+
+        // Fixed window: the wait is whatever is left of the current minute.
+        var retryAfter = int.Parse(Assert.Single(blocked.Headers.GetValues("Retry-After")));
+        Assert.InRange(retryAfter, 1, 60);
     }
 
     [Fact]

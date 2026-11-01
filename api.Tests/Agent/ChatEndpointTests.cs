@@ -133,11 +133,11 @@ public class ChatEndpointTests : IDisposable
     }
 
     [Fact]
-    public async Task Eleventh_chat_in_a_minute_is_rate_limited()
+    public async Task Chat_allows_a_burst_of_ten_then_asks_for_a_short_wait()
     {
         var visitor = await _factory.CreateSignedInVisitor();
 
-        for (var i = 0; i < RateLimits.ChatPerMinute; i++)
+        for (var i = 0; i < RateLimits.ChatBurst; i++)
         {
             var allowed = await visitor.PostAsJsonAsync("/api/chat", new { message = "hello" });
             Assert.Equal(HttpStatusCode.OK, allowed.StatusCode);
@@ -147,6 +147,10 @@ public class ChatEndpointTests : IDisposable
 
         Assert.Equal(HttpStatusCode.TooManyRequests, blocked.StatusCode);
         Assert.Equal("rate_limited", await ErrorCode(blocked));
+
+        // Token bucket: the next token arrives within one refill period, not a whole minute.
+        var retryAfter = int.Parse(Assert.Single(blocked.Headers.GetValues("Retry-After")));
+        Assert.InRange(retryAfter, 1, (int)RateLimits.ChatRefillEvery.TotalSeconds);
     }
 
     private static async Task<string?> ErrorCode(HttpResponseMessage response)
