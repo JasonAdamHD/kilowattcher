@@ -34,7 +34,7 @@ public class AzureOpenAIChatModelTests
         var model = new AzureOpenAIChatModel(configuration, NullLogger<AzureOpenAIChatModel>.Instance);
 
         var ex = await Assert.ThrowsAsync<ChatModelException>(
-            () => model.CompleteAsync([new ChatTurn("user", "hi")], CancellationToken.None));
+            () => model.NextAsync(new ModelRequest("test", [new UserItem("hi")], [], AllowTools: true), CancellationToken.None));
 
         Assert.Equal(ChatModelFailure.Unavailable, ex.Failure);
     }

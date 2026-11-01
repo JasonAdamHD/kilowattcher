@@ -4,8 +4,15 @@ public sealed record ChatHistoryMessage(string? Role, string? Content);
 
 public sealed record ChatRequest(string? Message, IReadOnlyList<ChatHistoryMessage>? History);
 
-/// <summary>Stage 2 always returns empty toolCalls and citations; Stages 3 and 4 fill them.</summary>
-public sealed record ChatResponse(string Answer, IReadOnlyList<string> ToolCalls, IReadOnlyList<string> Citations);
+/// <summary>
+/// toolCalls lists the tools the server ran, with arguments and raw results, so the UI can show them.
+/// suggestedQuestion is set only when the agent declines an off-topic request.
+/// </summary>
+public sealed record ChatResponse(
+    string Answer,
+    IReadOnlyList<ToolCallRecord> ToolCalls,
+    IReadOnlyList<string> Citations,
+    string? SuggestedQuestion);
 
 public static class ChatLimits
 {

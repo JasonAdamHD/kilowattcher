@@ -1,6 +1,7 @@
 using Kilowattcher.Api;
 using Kilowattcher.Api.Agent;
 using Kilowattcher.Api.Auth;
+using Kilowattcher.Api.Tools;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,6 +15,13 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<InviteCodeVerifier>();
 builder.Services.AddSingleton<SessionTokenService>();
 builder.Services.AddSingleton<IChatModel, AzureOpenAIChatModel>();
+builder.Services.AddSingleton<HomeClock>();
+builder.Services.AddSingleton<ITool, BatteryStatusTool>();
+builder.Services.AddSingleton<ITool, RateScheduleTool>();
+builder.Services.AddSingleton<ITool, SolarForecastTool>();
+builder.Services.AddSingleton<ITool, SearchDocsTool>();
+builder.Services.AddSingleton<ToolRegistry>();
+builder.Services.AddSingleton<AgentRunner>();
 builder.Services.AddKilowattcherRateLimits(); // needs TimeProvider, registered above
 
 var app = builder.Build();

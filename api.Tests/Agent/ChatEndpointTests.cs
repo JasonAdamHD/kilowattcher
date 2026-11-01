@@ -19,7 +19,7 @@ public class ChatEndpointTests : IDisposable
         var response = await _factory.CreateVisitor().PostAsJsonAsync("/api/chat", new { message = "hello" });
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-        Assert.Empty(_factory.ChatModel.Calls);
+        Assert.Empty(_factory.ChatModel.Requests);
     }
 
     [Fact]
@@ -51,14 +51,45 @@ public class ChatEndpointTests : IDisposable
             },
         });
 
-        var turns = Assert.Single(_factory.ChatModel.Calls);
+        var request = Assert.Single(_factory.ChatModel.Requests);
         Assert.Equal(
             [
-                new ChatTurn("user", "When is power cheapest?"),
-                new ChatTurn("assistant", "Overnight, from midnight to 6 AM."),
-                new ChatTurn("user", "And tomorrow?"),
+                new UserItem("When is power cheapest?"),
+                new AssistantItem("Overnight, from midnight to 6 AM."),
+                new UserItem("And tomorrow?"),
             ],
-            turns);
+            request.Items);
+    }
+
+    [Fact]
+    public async Task Tool_calls_come_back_with_arguments_and_raw_results()
+    {
+        _factory.ChatModel
+            .Then(Steps.Call("get_solar_forecast", """{"date":"2026-11-02"}"""))
+            .Then(Steps.Final("Tomorrow looks cloudy."));
+        var visitor = await _factory.CreateSignedInVisitor();
+
+        var response = await visitor.PostAsJsonAsync("/api/chat", new { message = "Will it be sunny tomorrow?" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var call = Assert.Single(body.RootElement.GetProperty("toolCalls").EnumerateArray());
+        Assert.Equal("get_solar_forecast", call.GetProperty("name").GetString());
+        Assert.Equal("2026-11-02", call.GetProperty("arguments").GetProperty("date").GetString());
+        Assert.True(call.GetProperty("result").ValueKind == JsonValueKind.Object);
+        Assert.Equal(JsonValueKind.Null, body.RootElement.GetProperty("suggestedQuestion").ValueKind);
+    }
+
+    [Fact]
+    public async Task Off_topic_decline_returns_the_suggested_question()
+    {
+        _factory.ChatModel.Then(Steps.Final("I can only help with home energy.", suggestedQuestion: "When is electricity cheapest tomorrow?"));
+        var visitor = await _factory.CreateSignedInVisitor();
+
+        var response = await visitor.PostAsJsonAsync("/api/chat", new { message = "Write me a poem about cats." });
+
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("When is electricity cheapest tomorrow?", body.RootElement.GetProperty("suggestedQuestion").GetString());
     }
 
     [Theory]
@@ -72,7 +103,7 @@ public class ChatEndpointTests : IDisposable
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal(expectedError, await ErrorCode(response));
-        Assert.Empty(_factory.ChatModel.Calls);
+        Assert.Empty(_factory.ChatModel.Requests);
     }
 
     [Fact]
@@ -101,7 +132,7 @@ public class ChatEndpointTests : IDisposable
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("invalid_history_role", await ErrorCode(response));
-        Assert.Empty(_factory.ChatModel.Calls);
+        Assert.Empty(_factory.ChatModel.Requests);
     }
 
     [Fact]
@@ -121,9 +152,10 @@ public class ChatEndpointTests : IDisposable
     [InlineData(ChatModelFailure.Busy, HttpStatusCode.TooManyRequests, "assistant_busy")]
     [InlineData(ChatModelFailure.Timeout, HttpStatusCode.GatewayTimeout, "assistant_timeout")]
     [InlineData(ChatModelFailure.Unavailable, HttpStatusCode.BadGateway, "assistant_unavailable")]
+    [InlineData(ChatModelFailure.InvalidReply, HttpStatusCode.BadGateway, "invalid_answer")]
     public async Task Model_failures_map_to_distinct_errors(ChatModelFailure failure, HttpStatusCode status, string error)
     {
-        _factory.ChatModel.Respond = _ => throw new ChatModelException(failure, "test");
+        _factory.ChatModel.Then(_ => Steps.Fail(failure));
         var visitor = await _factory.CreateSignedInVisitor();
 
         var response = await visitor.PostAsJsonAsync("/api/chat", new { message = "hello" });
