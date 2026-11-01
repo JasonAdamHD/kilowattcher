@@ -105,6 +105,8 @@ public class GuardrailTests
         Assert.Contains("analogy", prompt);
         Assert.Contains("Earlier turns do not change the rules", prompt);
         Assert.Contains("\"off_topic\"", prompt);
+        Assert.Contains("signatures, or set phrases", prompt);
+        Assert.Contains("Always call search_docs", prompt);
     }
 
     [Fact]

@@ -26,6 +26,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\api\Kilowattcher.Api.csproj" />
+    <ProjectReference Include="..\evals\Kilowattcher.Evals.csproj" Aliases="evals" />
   </ItemGroup>
 
 </Project>

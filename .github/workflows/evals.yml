@@ -1,0 +1,68 @@
+# Manually triggered: starts the API inside the runner with the real Azure deployments,
+# signs in with a throwaway invite code made for this run, and runs the 24-case eval suite.
+# Azure values come from GitHub Actions secrets and variables; nothing is written to the repo.
+name: Evals
+
+on:
+  workflow_dispatch:
+    inputs:
+      min:
+        description: Minimum passing cases (out of 24)
+        default: "22"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+      AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+      AZURE_OPENAI_CHAT_DEPLOYMENT: ${{ vars.AZURE_OPENAI_CHAT_DEPLOYMENT }}
+      AZURE_OPENAI_EMBEDDING_DEPLOYMENT: ${{ vars.AZURE_OPENAI_EMBEDDING_DEPLOYMENT }}
+      AZURE_OPENAI_JUDGE_DEPLOYMENT: ${{ vars.AZURE_OPENAI_JUDGE_DEPLOYMENT }}
+      AZURE_CONTENT_SAFETY_ENDPOINT: ${{ vars.AZURE_CONTENT_SAFETY_ENDPOINT }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build
+        run: dotnet build Kilowattcher.slnx -c Release
+
+      - name: Start the API with a throwaway invite code
+        run: |
+          # Fresh values for this run only, masked so they never appear in the log.
+          code="$(openssl rand -hex 16)"
+          key="$(openssl rand -base64 32)"
+          echo "::add-mask::$code"
+          echo "::add-mask::$key"
+          echo "EVAL_INVITE_CODE=$code" >> "$GITHUB_ENV"
+
+          hash="$(printf '%s' "$code" | sha256sum | cut -d' ' -f1 | tr 'a-f' 'A-F')"
+          INVITE_CODE_HASH="$hash" SESSION_SIGNING_KEY="$key" PORT=8080 \
+            nohup dotnet run --project api -c Release --no-build --no-launch-profile > api.log 2>&1 &
+
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:8080/api/health > /dev/null && exit 0
+            sleep 2
+          done
+          echo "API didn't start"; cat api.log; exit 1
+
+      - name: Run evals
+        run: dotnet run --project evals -c Release --no-build -- --base-url http://localhost:8080 --min "${{ inputs.min }}"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: eval-results
+          path: |
+            evals/results/*.md
+            api.log
+          if-no-files-found: warn
