@@ -1,0 +1,28 @@
+# Git ignore file for the project
+# Private Design Docs
+docs/
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.local.json
+secrets.json
+
+# Vercel
+.vercel/
+
+# .NET
+bin/
+obj/
+*.user
+.vs/
+TestResults/
+
+# Node
+node_modules/
+dist/
+coverage/
+
+# Claude Code personal settings
+.claude/settings.local.json
