@@ -9,14 +9,19 @@ using OpenAI.Responses;
 namespace Kilowattcher.Api.Agent;
 
 /// <summary>
-/// Calls the Azure OpenAI chat deployment through the stable OpenAI .NET SDK and the Azure v1 endpoint.
+/// One round trip to the Azure OpenAI chat deployment through the OpenAI .NET SDK and the Azure v1
+/// endpoint. Maps our AgentItems to Responses API items and back; the loop lives in AgentRunner.
 /// </summary>
 public sealed class AzureOpenAIChatModel : IChatModel
 {
-    // Stage 3 replaces this with the full home-energy scope, refusal, and safety prompt.
-    internal const string SystemPrompt =
-        "You are Kilowattcher, a friendly assistant for questions about home batteries, " +
-        "rooftop solar, and electricity rates. Answer in a few short, plain sentences.";
+    private static readonly ResponseTextOptions JsonReply = new()
+    {
+        TextFormat = ResponseTextFormat.CreateJsonSchemaFormat(
+            AgentReplyFormat.SchemaName,
+            BinaryData.FromString(AgentReplyFormat.Schema),
+            jsonSchemaFormatDescription: null,
+            jsonSchemaIsStrict: true),
+    };
 
     private readonly Lazy<(ResponsesClient Client, string Deployment)?> _client;
     private readonly ILogger<AzureOpenAIChatModel> _logger;
@@ -27,7 +32,7 @@ public sealed class AzureOpenAIChatModel : IChatModel
         _client = new Lazy<(ResponsesClient, string)?>(() => CreateClient(configuration));
     }
 
-    public async Task<ChatModelReply> CompleteAsync(IReadOnlyList<ChatTurn> turns, CancellationToken cancellationToken)
+    public async Task<ModelStep> NextAsync(ModelRequest request, CancellationToken cancellationToken)
     {
         if (_client.Value is not { } configured)
         {
@@ -35,20 +40,26 @@ public sealed class AzureOpenAIChatModel : IChatModel
         }
 
         var (client, deployment) = configured;
-
         var options = new CreateResponseOptions
         {
             Model = deployment,
-            Instructions = SystemPrompt,
+            Instructions = request.Instructions,
             MaxOutputTokenCount = ChatLimits.MaxOutputTokens,
             StoredOutputEnabled = false, // Don't keep visitor conversations on the Azure side.
+            TextOptions = JsonReply,
+            ParallelToolCallsEnabled = true,
+            ToolChoice = request.AllowTools ? ResponseToolChoice.CreateAutoChoice() : ResponseToolChoice.CreateNoneChoice(),
         };
 
-        foreach (var turn in turns)
+        foreach (var tool in request.Tools)
         {
-            options.InputItems.Add(turn.Role == ChatRole.Assistant
-                ? ResponseItem.CreateAssistantMessageItem(turn.Content, [])
-                : ResponseItem.CreateUserMessageItem(turn.Content));
+            options.Tools.Add(ResponseTool.CreateFunctionTool(
+                tool.Name, BinaryData.FromString(tool.ParametersSchema), strictModeEnabled: true, tool.Description));
+        }
+
+        foreach (var item in request.Items)
+        {
+            options.InputItems.Add(ToResponseItem(item));
         }
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -57,14 +68,19 @@ public sealed class AzureOpenAIChatModel : IChatModel
         try
         {
             ResponseResult result = await client.CreateResponseAsync(options, timeout.Token);
-            var text = result.GetOutputText();
 
-            if (string.IsNullOrWhiteSpace(text))
+            var toolCalls = result.OutputItems
+                .OfType<FunctionCallResponseItem>()
+                .Select(c => new ToolCallItem(c.CallId, c.FunctionName, c.FunctionArguments?.ToString() ?? "{}"))
+                .ToList();
+
+            var text = toolCalls.Count == 0 ? result.GetOutputText() : null;
+            if (toolCalls.Count == 0 && string.IsNullOrWhiteSpace(text))
             {
-                throw new ChatModelException(ChatModelFailure.Unavailable, "The model returned no text.");
+                throw new ChatModelException(ChatModelFailure.Unavailable, "The model returned neither text nor tool calls.");
             }
 
-            return new ChatModelReply(text.Trim(), result.Usage?.InputTokenCount ?? 0, result.Usage?.OutputTokenCount ?? 0);
+            return new ModelStep(toolCalls, text, result.Usage?.InputTokenCount ?? 0, result.Usage?.OutputTokenCount ?? 0);
         }
         catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
@@ -78,6 +94,16 @@ public sealed class AzureOpenAIChatModel : IChatModel
             throw new ChatModelException(failure, $"Azure OpenAI returned HTTP {ex.Status}.", ex);
         }
     }
+
+    private static ResponseItem ToResponseItem(AgentItem item) => item switch
+    {
+        UserItem user => ResponseItem.CreateUserMessageItem(user.Text),
+        AssistantItem assistant => ResponseItem.CreateAssistantMessageItem(assistant.Text, []),
+        ToolCallItem call => ResponseItem.CreateFunctionCallItem(call.CallId, call.Name, BinaryData.FromString(call.ArgumentsJson)),
+        ToolOutputItem output => ResponseItem.CreateFunctionCallOutputItem(output.CallId, output.OutputJson),
+        DeveloperNoteItem note => ResponseItem.CreateDeveloperMessageItem(note.Text),
+        _ => throw new ArgumentOutOfRangeException(nameof(item), item.GetType().Name, "Unknown conversation item."),
+    };
 
     private (ResponsesClient, string)? CreateClient(IConfiguration configuration)
     {
