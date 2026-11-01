@@ -1,40 +1,61 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { api } from './api'
+import type { Message } from './conversation'
+import { ChatScreen } from './components/ChatScreen'
+import { InviteScreen } from './components/InviteScreen'
 
-type ApiStatus = 'checking' | 'ok' | 'unreachable'
-
-const statusText: Record<ApiStatus, string> = {
-  checking: 'Checking the API…',
-  ok: 'API is up and running.',
-  unreachable: "Can't reach the API right now.",
-}
+type Screen = 'checking' | 'invite' | 'chat'
 
 export default function App() {
-  const [status, setStatus] = useState<ApiStatus>('checking')
+  const [screen, setScreen] = useState<Screen>('checking')
+  const [expired, setExpired] = useState(false)
+  // A question that hit an expired session; it's resent once the visitor redeems again.
+  const [pendingQuestion, setPendingQuestion] = useState<string | null>(null)
+  // Kept here so the conversation survives a trip through the Invite screen.
+  const [messages, setMessages] = useState<Message[]>([])
 
   useEffect(() => {
-    const controller = new AbortController()
-
-    fetch('/api/health', { signal: controller.signal })
-      .then(async (response) => {
-        const body: unknown = response.ok ? await response.json() : null
-        const isOk =
-          typeof body === 'object' && body !== null && 'status' in body && body.status === 'ok'
-        setStatus(isOk ? 'ok' : 'unreachable')
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setStatus('unreachable')
-      })
-
-    return () => controller.abort()
+    let active = true
+    api.session().then((result) => {
+      if (active) setScreen(result.ok ? 'chat' : 'invite')
+    })
+    return () => {
+      active = false
+    }
   }, [])
 
+  const handleRedeemed = useCallback(() => {
+    setExpired(false)
+    setScreen('chat')
+  }, [])
+
+  const handleSessionExpired = useCallback((unsentQuestion: string) => {
+    setPendingQuestion(unsentQuestion)
+    setExpired(true)
+    setScreen('invite')
+  }, [])
+
+  const clearPending = useCallback(() => setPendingQuestion(null), [])
+
+  if (screen === 'checking') {
+    return (
+      <main className="page page--center" aria-busy="true">
+        <p className="muted">Loading…</p>
+      </main>
+    )
+  }
+
+  if (screen === 'invite') {
+    return <InviteScreen expired={expired} onRedeemed={handleRedeemed} />
+  }
+
   return (
-    <main className="page">
-      <h1>Kilowattcher</h1>
-      <p>Your home energy copilot is on its way.</p>
-      <p className={`status status--${status}`} role="status">
-        {statusText[status]}
-      </p>
-    </main>
+    <ChatScreen
+      messages={messages}
+      setMessages={setMessages}
+      pendingQuestion={pendingQuestion}
+      onPendingQuestionSent={clearPending}
+      onSessionExpired={handleSessionExpired}
+    />
   )
 }

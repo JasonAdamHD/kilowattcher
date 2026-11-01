@@ -29,7 +29,7 @@ public static partial class MarkdownChunker
 
     public static IReadOnlyList<DocChunk> Chunk(string docName, string markdown)
     {
-        var lines = markdown.Replace("\r\n", "\n").Split('\n');
+        var lines = markdown.ReplaceLineEndings("\n").Split('\n');
         var title = lines.FirstOrDefault(l => l.StartsWith("# ", StringComparison.Ordinal))?[2..].Trim() ?? docName;
 
         var chunks = new List<DocChunk>();
@@ -56,7 +56,8 @@ public static partial class MarkdownChunker
             }
             else if (heading is not null && !line.StartsWith("# ", StringComparison.Ordinal))
             {
-                body.AppendLine(line);
+                // Always "\n", never Environment.NewLine, so hashes match on Windows and Linux.
+                body.Append(line).Append('\n');
             }
         }
 
