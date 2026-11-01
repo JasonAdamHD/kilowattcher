@@ -1,3 +1,7 @@
+using Kilowattcher.Api;
+using Kilowattcher.Api.Agent;
+using Kilowattcher.Api.Auth;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Vercel sends traffic to the port in PORT. The chiseled image runs as non-root,
@@ -5,10 +9,21 @@ var builder = WebApplication.CreateBuilder(args);
 var port = builder.Configuration["PORT"] ?? "8080";
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
+// Every setting comes through IConfiguration: user-secrets locally, environment variables on Vercel.
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<InviteCodeVerifier>();
+builder.Services.AddSingleton<SessionTokenService>();
+builder.Services.AddSingleton<IChatModel, AzureOpenAIChatModel>();
+builder.Services.AddKilowattcherRateLimits();
+
 var app = builder.Build();
+
+app.UseRateLimiter();
 
 // Vercel passes the full path to the container, so every route keeps the /api prefix.
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok" }));
+app.MapAuthEndpoints();
+app.MapChatEndpoints();
 
 app.Run();
 
