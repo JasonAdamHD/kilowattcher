@@ -50,6 +50,6 @@ public static class ChatEndpoints
                     _ => Results.Json(new ApiError("assistant_unavailable"), statusCode: StatusCodes.Status502BadGateway),
                 };
             }
-        }).RequireRateLimiting(RateLimits.ChatPolicy);
+        }).RequireChatRateLimit();
     }
 }

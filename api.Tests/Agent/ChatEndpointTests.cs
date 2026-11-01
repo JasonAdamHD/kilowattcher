@@ -147,11 +147,32 @@ public class ChatEndpointTests : IDisposable
 
         Assert.Equal(HttpStatusCode.TooManyRequests, blocked.StatusCode);
         Assert.Equal("rate_limited", await ErrorCode(blocked));
+        Assert.Equal("0", Header(blocked, "RateLimit-Remaining"));
 
         // Token bucket: the next token arrives within one refill period, not a whole minute.
-        var retryAfter = int.Parse(Assert.Single(blocked.Headers.GetValues("Retry-After")));
+        var retryAfter = int.Parse(Header(blocked, "Retry-After"));
         Assert.InRange(retryAfter, 1, (int)RateLimits.ChatRefillEvery.TotalSeconds);
+        Assert.Equal(retryAfter.ToString(), Header(blocked, "RateLimit-Reset"));
     }
+
+    [Fact]
+    public async Task Every_chat_response_reports_tokens_left_and_time_to_the_next_one()
+    {
+        var visitor = await _factory.CreateSignedInVisitor();
+
+        var first = await visitor.PostAsJsonAsync("/api/chat", new { message = "hello" });
+        var second = await visitor.PostAsJsonAsync("/api/chat", new { message = "" }); // a 400 still spends a token
+
+        Assert.Equal("10", Header(first, "RateLimit-Limit"));
+        Assert.Equal("9", Header(first, "RateLimit-Remaining"));
+        Assert.InRange(int.Parse(Header(first, "RateLimit-Reset")), 1, 6);
+        Assert.Equal(HttpStatusCode.BadRequest, second.StatusCode);
+        Assert.Equal("8", Header(second, "RateLimit-Remaining"));
+        Assert.False(first.Headers.Contains("Retry-After"));
+    }
+
+    private static string Header(HttpResponseMessage response, string name) =>
+        Assert.Single(response.Headers.GetValues(name));
 
     private static async Task<string?> ErrorCode(HttpResponseMessage response)
     {

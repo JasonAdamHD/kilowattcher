@@ -14,7 +14,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<InviteCodeVerifier>();
 builder.Services.AddSingleton<SessionTokenService>();
 builder.Services.AddSingleton<IChatModel, AzureOpenAIChatModel>();
-builder.Services.AddKilowattcherRateLimits();
+builder.Services.AddKilowattcherRateLimits(); // needs TimeProvider, registered above
 
 var app = builder.Build();
 

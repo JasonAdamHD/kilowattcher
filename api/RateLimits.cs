@@ -9,29 +9,31 @@ namespace Kilowattcher.Api;
 public static class RateLimits
 {
     public const string RedeemPolicy = "redeem";
-    public const string ChatPolicy = "chat";
 
-    // Redeem: fixed window. A burst of wrong codes locks the visitor out until the minute ends,
-    // matching the "Too many tries. Wait a minute" screen.
+    // Redeem: built-in fixed window. A burst of wrong codes locks the visitor out for the rest
+    // of the minute, matching the "Too many tries. Wait a minute" screen.
     public const int RedeemPerMinute = 5;
+    private static readonly TimeSpan RedeemWindow = TimeSpan.FromMinutes(1);
 
-    // Chat: token bucket. A visitor can fire 10 quick questions, then gets one more every
-    // 6 seconds (10 per minute sustained) instead of waiting for a whole window to reset.
+    // Chat: our own token bucket (ChatRateLimiter). A visitor can fire 10 quick questions,
+    // then earns one more every 6 seconds (10 per minute sustained).
     public const int ChatBurst = 10;
     public static readonly TimeSpan ChatRefillEvery = TimeSpan.FromSeconds(6);
 
-    private static readonly TimeSpan FallbackRetryAfter = TimeSpan.FromMinutes(1);
+    public static IServiceCollection AddKilowattcherRateLimits(this IServiceCollection services)
+    {
+        services.AddSingleton(sp => new ChatRateLimiter(ChatBurst, ChatRefillEvery, sp.GetRequiredService<TimeProvider>()));
 
-    public static IServiceCollection AddKilowattcherRateLimits(this IServiceCollection services) =>
-        services.AddRateLimiter(options =>
+        return services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
             options.OnRejected = async (context, cancellationToken) =>
             {
-                // Tell the client exactly when a retry will succeed, as reported by the limiter itself.
+                // The built-in limiter reports the full window, not the time left in it, so this
+                // is an upper bound: a client that waits this long is guaranteed to get through.
                 var retryAfter = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var wait) && wait > TimeSpan.Zero
                     ? wait
-                    : FallbackRetryAfter;
+                    : RedeemWindow;
 
                 context.HttpContext.Response.Headers.RetryAfter = RetryAfterSeconds(retryAfter).ToString();
                 await context.HttpContext.Response.WriteAsJsonAsync(new ApiError("rate_limited"), cancellationToken);
@@ -41,20 +43,11 @@ public static class RateLimits
                 RateLimitPartition.GetFixedWindowLimiter(ClientIp(http), _ => new FixedWindowRateLimiterOptions
                 {
                     PermitLimit = RedeemPerMinute,
-                    Window = TimeSpan.FromMinutes(1),
-                    QueueLimit = 0,
-                }));
-
-            options.AddPolicy(ChatPolicy, http =>
-                RateLimitPartition.GetTokenBucketLimiter(ClientIp(http), _ => new TokenBucketRateLimiterOptions
-                {
-                    TokenLimit = ChatBurst,
-                    TokensPerPeriod = 1,
-                    ReplenishmentPeriod = ChatRefillEvery,
-                    AutoReplenishment = true,
+                    Window = RedeemWindow,
                     QueueLimit = 0,
                 }));
         });
+    }
 
     /// <summary>Whole seconds, rounded up, so a client that waits this long is never early.</summary>
     internal static int RetryAfterSeconds(TimeSpan wait) => Math.Max(1, (int)Math.Ceiling(wait.TotalSeconds));
