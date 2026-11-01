@@ -24,6 +24,7 @@ export function toHistory(messages: Message[]): HistoryMessage[] {
 
 const toolLabels: Record<string, { label: string; icon: 'battery' | 'rates' | 'solar' | 'docs' }> = {
   get_battery_status: { label: 'Battery', icon: 'battery' },
+  estimate_backup_time: { label: 'Backup estimate', icon: 'battery' },
   get_rate_schedule: { label: 'Rates', icon: 'rates' },
   get_solar_forecast: { label: 'Solar forecast', icon: 'solar' },
   search_docs: { label: 'Docs', icon: 'docs' },
