@@ -35,5 +35,8 @@ public sealed class BatteryStatusTool : ITool
 
     public string ParametersSchema => ToolArguments.NoArgumentsSchema;
 
-    public object Execute(JsonElement arguments) => Status;
+    public Task<object> ExecuteAsync(JsonElement arguments, CancellationToken cancellationToken) =>
+        Task.FromResult<object>(Status);
+
+    internal object Execute(JsonElement arguments) => Status;
 }

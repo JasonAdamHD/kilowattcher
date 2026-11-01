@@ -13,7 +13,7 @@ public class AzureOpenAIChatModelTests
     [InlineData("https://kw.openai.azure.com/openai/v1/", "https://kw.openai.azure.com/openai/v1/")]
     public void Endpoint_is_normalised_to_the_azure_v1_path(string configured, string expected)
     {
-        Assert.Equal(expected, AzureOpenAIChatModel.ToV1Endpoint(new Uri(configured)).ToString());
+        Assert.Equal(expected, AzureOpenAISettings.ToV1Endpoint(new Uri(configured)).ToString());
     }
 
     [Theory]

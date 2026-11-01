@@ -12,6 +12,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Precomputed vectors ship with the app so cold starts make zero embedding calls. -->
+    <Content Update="Data\embeddings.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- The source docs are only needed by tools/embed, not at runtime. -->
+    <None Update="Data\docs\**" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Kilowattcher.Api.Tests" />
   </ItemGroup>
 

@@ -13,7 +13,7 @@ public interface ITool
     /// <summary>JSON Schema for the arguments, in OpenAI strict mode (every property required, no extras).</summary>
     string ParametersSchema { get; }
 
-    object Execute(JsonElement arguments);
+    Task<object> ExecuteAsync(JsonElement arguments, CancellationToken cancellationToken);
 }
 
 public sealed record ToolError(string Error);

@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using Kilowattcher.Api.Agent;
 using Kilowattcher.Api.Auth;
+using Kilowattcher.Api.Rag;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -22,6 +23,8 @@ public sealed class KilowattcherFactory : WebApplicationFactory<Program>
 
     public FakeChatModel ChatModel { get; } = new();
 
+    public FakeEmbeddingClient Embeddings { get; } = new();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -33,6 +36,8 @@ public sealed class KilowattcherFactory : WebApplicationFactory<Program>
         builder.ConfigureTestServices(services =>
         {
             services.AddSingleton<IChatModel>(ChatModel);
+            services.AddSingleton<IEmbeddingClient>(Embeddings);
+            services.AddSingleton(TestIndex.Provider(TestIndex.ThreeAxes()));
         });
     }
 

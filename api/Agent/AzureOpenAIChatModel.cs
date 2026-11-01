@@ -3,7 +3,6 @@
 #pragma warning disable OPENAI001
 
 using System.ClientModel;
-using System.ClientModel.Primitives;
 using OpenAI.Responses;
 
 namespace Kilowattcher.Api.Agent;
@@ -63,7 +62,7 @@ public sealed class AzureOpenAIChatModel : IChatModel
         }
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(ChatLimits.AzureTimeout);
+        timeout.CancelAfter(AzureOpenAISettings.Timeout);
 
         try
         {
@@ -107,37 +106,14 @@ public sealed class AzureOpenAIChatModel : IChatModel
 
     private (ResponsesClient, string)? CreateClient(IConfiguration configuration)
     {
-        var endpoint = configuration["AZURE_OPENAI_ENDPOINT"];
-        var apiKey = configuration["AZURE_OPENAI_API_KEY"];
-        var deployment = configuration["AZURE_OPENAI_CHAT_DEPLOYMENT"];
-
-        if (string.IsNullOrWhiteSpace(endpoint) || string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(deployment)
-            || !Uri.TryCreate(endpoint.Trim(), UriKind.Absolute, out var baseUri) || baseUri.Scheme != Uri.UriSchemeHttps)
+        var settings = AzureOpenAISettings.TryRead(configuration, AzureOpenAISettings.ChatDeploymentKey);
+        if (settings is null)
         {
             _logger.LogError("Azure OpenAI settings are missing or invalid (endpoint, key, or chat deployment).");
             return null;
         }
 
-        var options = new ResponsesClientOptions
-        {
-            Endpoint = ToV1Endpoint(baseUri),
-            NetworkTimeout = ChatLimits.AzureTimeout,
-            // One retry at most, so a slow Azure can't stretch a request far past the 30-second budget.
-            RetryPolicy = new ClientRetryPolicy(maxRetries: 1),
-        };
-
-        return (new ResponsesClient(new ApiKeyCredential(apiKey.Trim()), options), deployment.Trim());
-    }
-
-    /// <summary>Turns "https://name.openai.azure.com/" into "https://name.openai.azure.com/openai/v1/".</summary>
-    internal static Uri ToV1Endpoint(Uri baseUri)
-    {
-        var path = baseUri.AbsolutePath.TrimEnd('/');
-        if (path.EndsWith("/openai/v1", StringComparison.OrdinalIgnoreCase))
-        {
-            return new Uri(baseUri, path + "/");
-        }
-
-        return new Uri(baseUri, path + "/openai/v1/");
+        var options = settings.Configure(new ResponsesClientOptions { Endpoint = settings.Endpoint });
+        return (new ResponsesClient(settings.Credential, options), settings.Deployment);
     }
 }

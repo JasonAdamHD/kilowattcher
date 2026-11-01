@@ -1,6 +1,7 @@
 using Kilowattcher.Api;
 using Kilowattcher.Api.Agent;
 using Kilowattcher.Api.Auth;
+using Kilowattcher.Api.Rag;
 using Kilowattcher.Api.Tools;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -19,6 +20,8 @@ builder.Services.AddSingleton<HomeClock>();
 builder.Services.AddSingleton<ITool, BatteryStatusTool>();
 builder.Services.AddSingleton<ITool, RateScheduleTool>();
 builder.Services.AddSingleton<ITool, SolarForecastTool>();
+builder.Services.AddSingleton<DocIndexProvider>();
+builder.Services.AddSingleton<IEmbeddingClient, AzureEmbeddingClient>();
 builder.Services.AddSingleton<ITool, SearchDocsTool>();
 builder.Services.AddSingleton<ToolRegistry>();
 builder.Services.AddSingleton<AgentRunner>();

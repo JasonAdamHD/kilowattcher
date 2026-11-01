@@ -7,10 +7,13 @@ namespace Kilowattcher.Api.Agent;
 /// <summary>A tool the server actually ran, recorded by the server (never taken from the model's claims).</summary>
 public sealed record ToolCallRecord(string Name, JsonElement Arguments, JsonElement Result);
 
+/// <summary>A passage the answer relies on, with the text the citation overlay shows.</summary>
+public sealed record Citation(string Id, string Title, string Heading, string Text);
+
 public sealed record AgentResult(
     string Answer,
     IReadOnlyList<ToolCallRecord> ToolCalls,
-    IReadOnlyList<string> Citations,
+    IReadOnlyList<Citation> Citations,
     string? SuggestedQuestion,
     bool RoundLimitReached);
 
@@ -36,7 +39,7 @@ public sealed class AgentRunner(IChatModel model, ToolRegistry tools, HomeClock 
         var stopwatch = Stopwatch.StartNew();
         var items = conversation.ToList();
         var records = new List<ToolCallRecord>();
-        var citableIds = new HashSet<string>(StringComparer.Ordinal);
+        var citable = new Dictionary<string, Citation>(StringComparer.Ordinal);
         var definitions = tools.All.Select(t => new ToolDefinition(t.Name, t.Description, t.ParametersSchema)).ToList();
         var instructions = SystemPrompt.Build(clock);
         var usage = (Input: 0, Output: 0);
@@ -74,7 +77,7 @@ public sealed class AgentRunner(IChatModel model, ToolRegistry tools, HomeClock 
                 rounds++;
                 foreach (var call in step.ToolCalls)
                 {
-                    var record = RunTool(call, citableIds);
+                    var record = await RunToolAsync(call, citable, budget.Token);
                     records.Add(record);
                     items.Add(call);
                     items.Add(new ToolOutputItem(call.CallId, record.Result.GetRawText()));
@@ -99,13 +102,13 @@ public sealed class AgentRunner(IChatModel model, ToolRegistry tools, HomeClock 
                 }
             }
 
-            var citations = reply.Citations.Where(citableIds.Contains).ToList();
-            var stripped = reply.Citations.Count - citations.Count;
-            if (stripped > 0)
+            var citations = reply.Citations.Where(citable.ContainsKey).Select(id => citable[id]).ToList();
+            var unknown = reply.Citations.Where(id => !citable.ContainsKey(id)).ToList();
+            if (unknown.Count > 0)
             {
-                // IDs only, never message text: they come from our own document set.
+                // Logged for the owner. Model-written IDs are trimmed so a log line can't grow without bound.
                 logger.LogWarning("Removed {Count} citation(s) that search_docs never returned: {Ids}.",
-                    stripped, string.Join(", ", reply.Citations.Except(citations)));
+                    unknown.Count, string.Join(", ", unknown.Select(id => id.Length > 80 ? id[..80] : id)));
             }
 
             var answer = limitReached ? $"{reply.Answer}\n\n{RoundLimitNote}" : reply.Answer;
@@ -123,7 +126,7 @@ public sealed class AgentRunner(IChatModel model, ToolRegistry tools, HomeClock 
         }
     }
 
-    private ToolCallRecord RunTool(ToolCallItem call, HashSet<string> citableIds)
+    private async Task<ToolCallRecord> RunToolAsync(ToolCallItem call, Dictionary<string, Citation> citable, CancellationToken cancellationToken)
     {
         var arguments = ParseArguments(call.ArgumentsJson);
         object result;
@@ -140,9 +143,9 @@ public sealed class AgentRunner(IChatModel model, ToolRegistry tools, HomeClock 
         {
             try
             {
-                result = tool.Execute(arguments.Value);
+                result = await tool.ExecuteAsync(arguments.Value, cancellationToken);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 logger.LogError(ex, "Tool {Tool} failed.", call.Name);
                 result = new ToolError("The tool failed. Answer without it.");
@@ -151,7 +154,10 @@ public sealed class AgentRunner(IChatModel model, ToolRegistry tools, HomeClock 
 
         if (result is DocSearchResult search)
         {
-            citableIds.UnionWith(search.Results.Select(r => r.Id));
+            foreach (var hit in search.Results)
+            {
+                citable[hit.Id] = new Citation(hit.Id, hit.Title, hit.Heading, hit.Text);
+            }
         }
 
         return new ToolCallRecord(

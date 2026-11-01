@@ -38,7 +38,10 @@ public sealed class SolarForecastTool(HomeClock clock) : ITool
 
     public string ParametersSchema => ToolArguments.DateOnlySchema;
 
-    public object Execute(JsonElement arguments)
+    public Task<object> ExecuteAsync(JsonElement arguments, CancellationToken cancellationToken) =>
+        Task.FromResult(Execute(arguments));
+
+    internal object Execute(JsonElement arguments)
     {
         if (!ToolArguments.TryGetDate(arguments, out var date))
         {

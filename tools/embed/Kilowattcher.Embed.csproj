@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Same secrets store as the API, so the Azure values are set up once. -->
+    <UserSecretsId>7ac7ace1-a310-4674-a03a-f933ba5bcc9e</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Reuses the API's chunker and Azure settings, so chunk IDs always match what the API serves. -->
+    <ProjectReference Include="..\..\api\Kilowattcher.Api.csproj" />
+  </ItemGroup>
+
+</Project>

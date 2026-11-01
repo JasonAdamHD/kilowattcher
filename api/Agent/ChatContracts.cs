@@ -11,7 +11,7 @@ public sealed record ChatRequest(string? Message, IReadOnlyList<ChatHistoryMessa
 public sealed record ChatResponse(
     string Answer,
     IReadOnlyList<ToolCallRecord> ToolCalls,
-    IReadOnlyList<string> Citations,
+    IReadOnlyList<Citation> Citations,
     string? SuggestedQuestion);
 
 public static class ChatLimits
@@ -23,7 +23,6 @@ public static class ChatLimits
     public const int MaxAssistantHistoryLength = 4_000;
 
     public const int MaxOutputTokens = 600;
-    public static readonly TimeSpan AzureTimeout = TimeSpan.FromSeconds(30);
 }
 
 public static class ChatRequestValidator
