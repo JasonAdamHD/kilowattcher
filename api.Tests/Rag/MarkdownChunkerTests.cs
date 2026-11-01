@@ -27,14 +27,16 @@ public class MarkdownChunkerTests
         Assert.Equal(["battery-manual#reserve-percentage", "battery-manual#what-backup-cant-power"], chunks.Select(c => c.Id));
         Assert.All(chunks, c => Assert.Equal("VoltNest 13 Owner's Guide", c.Title));
         Assert.Equal("Reserve percentage", chunks[0].Heading);
-        Assert.Equal("The reserve is kept for outages.\nDefault is 20%.", chunks[0].Text.Replace("\r\n", "\n"));
+        Assert.Equal("The reserve is kept for outages.\nDefault is 20%.", chunks[0].Text);
     }
 
     [Fact]
     public void Windows_line_endings_give_the_same_chunks()
     {
-        var unix = MarkdownChunker.Chunk("doc", Sample);
-        var windows = MarkdownChunker.Chunk("doc", Sample.Replace("\n", "\r\n"));
+        // Normalize first: Git may check this test file out with either line ending.
+        var lf = Sample.ReplaceLineEndings("\n");
+        var unix = MarkdownChunker.Chunk("doc", lf);
+        var windows = MarkdownChunker.Chunk("doc", lf.Replace("\n", "\r\n"));
 
         Assert.Equal(unix.Select(c => (c.Id, c.ContentHash)), windows.Select(c => (c.Id, c.ContentHash)));
     }
