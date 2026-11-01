@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="api/Kilowattcher.Api.csproj" />
+  <Project Path="api.Tests/Kilowattcher.Api.Tests.csproj" />
+</Solution>

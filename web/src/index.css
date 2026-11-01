@@ -1,0 +1,59 @@
+/* Design tokens from the design brief. The full set arrives with the Stage 4 UI. */
+:root {
+  --color-grid-navy: #0f2a3d;
+  --color-leaf-green: #2e9e6b;
+  --color-alert-red: #c83a3a;
+  --color-ink: #1c2430;
+  --color-muted: #5b6878;
+  --color-background: #f5f7fa;
+
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--color-ink);
+  background: var(--color-background);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-grid-navy: #9cc3e0;
+    --color-leaf-green: #4cc38a;
+    --color-alert-red: #f07171;
+    --color-ink: #e6edf3;
+    --color-muted: #9aa7b5;
+    --color-background: #0e1621;
+  }
+}
+
+body {
+  margin: 0;
+}
+
+.page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 32px 16px;
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--color-grid-navy);
+}
+
+.status {
+  font-size: 14px;
+  color: var(--color-muted);
+}
+
+.status--ok {
+  color: var(--color-ink);
+  border-left: 4px solid var(--color-leaf-green);
+  padding-left: 8px;
+}
+
+.status--unreachable {
+  color: var(--color-alert-red);
+}

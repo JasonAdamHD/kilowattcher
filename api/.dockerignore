@@ -1,0 +1,9 @@
+bin/
+obj/
+Properties/launchSettings.json
+**/*.local.json
+**/secrets.json
+.env
+.env.*
+Dockerfile
+.dockerignore
