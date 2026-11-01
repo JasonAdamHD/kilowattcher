@@ -15,13 +15,18 @@ export type Citation = {
 }
 
 export type ChatReply = {
+  topic: 'home_energy' | 'off_topic' | 'safety'
   answer: string
   toolCalls: ToolCall[]
   citations: Citation[]
   suggestedQuestion: string | null
+  /** Proof the API wrote this answer; sent back with it in history. */
+  signature: string
 }
 
-export type HistoryMessage = { role: 'user' | 'assistant'; content: string }
+export type HistoryMessage =
+  | { role: 'user'; content: string }
+  | { role: 'assistant'; content: string; signature: string }
 
 export type ApiFailure =
   | { kind: 'unauthorized' }

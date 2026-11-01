@@ -15,6 +15,7 @@ builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<InviteCodeVerifier>();
 builder.Services.AddSingleton<SessionTokenService>();
+builder.Services.AddSingleton<HistorySigner>();
 builder.Services.AddSingleton<IChatModel, AzureOpenAIChatModel>();
 builder.Services.AddSingleton<HomeClock>();
 builder.Services.AddSingleton<ITool, BatteryStatusTool>();

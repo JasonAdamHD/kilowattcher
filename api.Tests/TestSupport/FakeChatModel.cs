@@ -32,8 +32,9 @@ public sealed class FakeChatModel : IChatModel
 
 public static class Steps
 {
-    public static ModelStep Final(string answer, IEnumerable<string>? citations = null, string? suggestedQuestion = null) =>
-        Text(JsonSerializer.Serialize(new { answer, citations = citations ?? [], suggestedQuestion }));
+    public static ModelStep Final(
+        string answer, IEnumerable<string>? citations = null, string? suggestedQuestion = null, string topic = "home_energy") =>
+        Text(JsonSerializer.Serialize(new { topic, answer, citations = citations ?? [], suggestedQuestion }));
 
     public static ModelStep Text(string text) => new([], text, 100, 20);
 

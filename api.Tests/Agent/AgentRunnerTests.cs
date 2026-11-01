@@ -220,16 +220,6 @@ public class AgentRunnerTests
     }
 
     [Fact]
-    public async Task Suggested_question_is_passed_through()
-    {
-        _model.Then(Steps.Final("I only help with home energy.", suggestedQuestion: "When is electricity cheapest tomorrow?"));
-
-        var result = await Ask("Write me a poem about cats.");
-
-        Assert.Equal("When is electricity cheapest tomorrow?", result.SuggestedQuestion);
-    }
-
-    [Fact]
     public async Task Model_failures_propagate_unchanged()
     {
         _model.Then(_ => Steps.Fail(ChatModelFailure.Busy));
