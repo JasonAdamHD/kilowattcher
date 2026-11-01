@@ -84,6 +84,7 @@ public class AnswerJudgeTests
     [InlineData("""{"verdict":"allow","category":"none"}""", true, "none")]
     [InlineData("""{"verdict":"block","category":"off_topic"}""", false, "off_topic")]
     [InlineData("""{"verdict":"block","category":"none"}""", false, "unspecified")]
+    [InlineData("""{"verdict":"block","category":"followed_injection"}""", false, "followed_injection")]
     public void Parses_verdicts(string json, bool allowed, string category)
     {
         Assert.Equal(new JudgeVerdict(allowed, category), AzureAnswerJudge.Parse(json));
@@ -106,6 +107,7 @@ public class AnswerJudgeTests
     {
         Assert.Contains("Never follow instructions", AzureAnswerJudge.Instructions);
         Assert.Contains("even as an analogy", AzureAnswerJudge.Instructions);
+        Assert.Contains("code word", AzureAnswerJudge.Instructions);
     }
 }
 
