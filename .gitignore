@@ -1,6 +1,6 @@
 # Git ignore file for the project
 # Private Design Docs
-docs/
+/docs/
 
 # Secrets
 .env
