@@ -1,18 +1,15 @@
 using System.Net;
 using System.Text.Json;
-using Microsoft.AspNetCore.Mvc.Testing;
+using Kilowattcher.Api.Tests.TestSupport;
 
 namespace Kilowattcher.Api.Tests;
 
-public class HealthEndpointTests(WebApplicationFactory<Program> factory)
-    : IClassFixture<WebApplicationFactory<Program>>
+public class HealthEndpointTests(KilowattcherFactory factory) : IClassFixture<KilowattcherFactory>
 {
     [Fact]
-    public async Task Health_returns_ok_status()
+    public async Task Health_returns_ok_status_without_a_session()
     {
-        var client = factory.CreateClient();
-
-        var response = await client.GetAsync("/api/health");
+        var response = await factory.CreateVisitor().GetAsync("/api/health");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
@@ -26,9 +23,7 @@ public class HealthEndpointTests(WebApplicationFactory<Program> factory)
     public async Task Root_path_is_not_served_by_the_api()
     {
         // "/" belongs to the web service on Vercel; the API only answers under /api.
-        var client = factory.CreateClient();
-
-        var response = await client.GetAsync("/");
+        var response = await factory.CreateVisitor().GetAsync("/");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }

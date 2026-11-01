@@ -1,0 +1,42 @@
+# Local requests for the API (VS Code REST Client or Visual Studio / Rider .http support).
+# Start the API first: dotnet run --project api
+# Type the invite code when prompted. Never save it in this file.
+
+@baseUrl = http://localhost:8080
+
+### Health (no session needed)
+GET {{baseUrl}}/api/health
+
+### Session check: 401 before redeeming, 200 after
+GET {{baseUrl}}/api/auth/session
+
+### Redeem the invite code (sets the kw_session cookie)
+# @prompt code
+POST {{baseUrl}}/api/auth/redeem
+Content-Type: application/json
+
+{ "code": "{{code}}" }
+
+### Wrong code: expect 401 invalid_code
+POST {{baseUrl}}/api/auth/redeem
+Content-Type: application/json
+
+{ "code": "definitely-wrong" }
+
+### Chat
+POST {{baseUrl}}/api/chat
+Content-Type: application/json
+
+{ "message": "hello" }
+
+### Chat with history
+POST {{baseUrl}}/api/chat
+Content-Type: application/json
+
+{
+  "message": "And what about tomorrow?",
+  "history": [
+    { "role": "user", "content": "When is electricity cheapest?" },
+    { "role": "assistant", "content": "Usually overnight, when demand is low." }
+  ]
+}
