@@ -37,10 +37,12 @@ export const signedOut = json(401, { error: 'unauthorized' })
 
 export const reply = (overrides: Partial<ChatReply> = {}) =>
   json(200, {
+    topic: 'home_energy',
     answer: 'Yes. Charge between midnight and 6 AM at $0.11 per kWh.',
     toolCalls: [],
     citations: [],
     suggestedQuestion: null,
+    signature: `sig:${overrides.answer ?? 'default'}`,
     ...overrides,
   } satisfies ChatReply)
 

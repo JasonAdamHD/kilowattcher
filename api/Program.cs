@@ -2,6 +2,7 @@ using Kilowattcher.Api;
 using Kilowattcher.Api.Agent;
 using Kilowattcher.Api.Auth;
 using Kilowattcher.Api.Rag;
+using Kilowattcher.Api.Safety;
 using Kilowattcher.Api.Tools;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -15,6 +16,7 @@ builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<InviteCodeVerifier>();
 builder.Services.AddSingleton<SessionTokenService>();
+builder.Services.AddSingleton<HistorySigner>();
 builder.Services.AddSingleton<IChatModel, AzureOpenAIChatModel>();
 builder.Services.AddSingleton<HomeClock>();
 builder.Services.AddSingleton<ITool, BatteryStatusTool>();
@@ -24,6 +26,8 @@ builder.Services.AddSingleton<DocIndexProvider>();
 builder.Services.AddSingleton<IEmbeddingClient, AzureEmbeddingClient>();
 builder.Services.AddSingleton<ITool, SearchDocsTool>();
 builder.Services.AddSingleton<ToolRegistry>();
+builder.Services.AddSingleton<IAnswerJudge, AzureAnswerJudge>();
+builder.Services.AddHttpClient<IPromptShield, AzurePromptShield>(client => client.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddSingleton<AgentRunner>();
 builder.Services.AddKilowattcherRateLimits(); // needs TimeProvider, registered above
 

@@ -163,7 +163,7 @@ describe('Chat screen', () => {
       message: 'And tomorrow?',
       history: [
         { role: 'user', content: 'When is power cheapest?' },
-        { role: 'assistant', content: 'Overnight, 12 AM to 6 AM.' },
+        { role: 'assistant', content: 'Overnight, 12 AM to 6 AM.', signature: 'sig:Overnight, 12 AM to 6 AM.' },
       ],
     })
     expect(messageBox()).toHaveValue('')
@@ -269,7 +269,7 @@ describe('Chat screen', () => {
       message: 'Second question',
       history: [
         { role: 'user', content: 'First question' },
-        { role: 'assistant', content: 'First answer.' },
+        { role: 'assistant', content: 'First answer.', signature: 'sig:First answer.' },
       ],
     })
     expect(screen.getAllByText('Second question', { selector: '.bubble--user' })).toHaveLength(1)
@@ -279,7 +279,11 @@ describe('Chat screen', () => {
     const api = mockApi({
       'GET /api/auth/session': signedIn,
       'POST /api/chat': [
-        reply({ answer: 'I can only help with home energy.', suggestedQuestion: 'When is electricity cheapest tomorrow?' }),
+        reply({
+          topic: 'off_topic',
+          answer: 'I can only help with home energy.',
+          suggestedQuestion: 'When is electricity cheapest tomorrow?',
+        }),
         reply({ answer: '12 AM to 6 AM at $0.11 per kWh.' }),
       ],
     })
@@ -301,6 +305,20 @@ describe('Chat screen', () => {
     await user.click(screen.getByRole('button', { name: CHARGE }))
 
     expect(await screen.findByText('I may have missed something; try a narrower question.')).toBeInTheDocument()
+  })
+
+  it('asks for a new chat if the server rejects the history', async () => {
+    mockApi({
+      'GET /api/auth/session': signedIn,
+      'POST /api/chat': [reply({ answer: 'First answer.' }), json(400, { error: 'invalid_history' })],
+    })
+    const user = await openChat()
+    await user.type(messageBox(), 'First question{Enter}')
+    await screen.findByText('First answer.')
+    await user.type(messageBox(), 'Second question{Enter}')
+
+    expect(await screen.findByText("This conversation can't continue. Tap New chat to start again.")).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
   })
 
   it('New chat clears the conversation', async () => {

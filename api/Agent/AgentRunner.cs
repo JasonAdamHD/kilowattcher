@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Kilowattcher.Api.Safety;
 using Kilowattcher.Api.Tools;
 
 namespace Kilowattcher.Api.Agent;
@@ -11,6 +12,7 @@ public sealed record ToolCallRecord(string Name, JsonElement Arguments, JsonElem
 public sealed record Citation(string Id, string Title, string Heading, string Text);
 
 public sealed record AgentResult(
+    string Topic,
     string Answer,
     IReadOnlyList<ToolCallRecord> ToolCalls,
     IReadOnlyList<Citation> Citations,
@@ -21,10 +23,21 @@ public sealed record AgentResult(
 /// The agent loop: system prompt → model → run requested tools → feed results back → repeat,
 /// with a hard limit of 5 tool rounds. Then the reply is validated as JSON, with one retry.
 /// </summary>
-public sealed class AgentRunner(IChatModel model, ToolRegistry tools, HomeClock clock, ILogger<AgentRunner> logger)
+public sealed class AgentRunner(IChatModel model, ToolRegistry tools, HomeClock clock, IAnswerJudge judge, ILogger<AgentRunner> logger)
 {
     public const int MaxToolRounds = 5;
     public const string RoundLimitNote = "I may have missed something; try a narrower question.";
+
+    // Fixed wording the server uses instead of the model's text, so an off-topic reply can't leak content.
+    public const string OffTopicAnswer =
+        "I can only help with home energy: your battery, solar, and electricity rates. Want to try one of those?";
+    public const string DefaultSuggestion = "When is electricity cheapest tomorrow?";
+    public const string ElectricianNote = "For any wiring or panel work, please contact a licensed electrician.";
+
+    // Used when a safety layer (the answer judge or Prompt Shields) withholds a reply.
+    public const string BlockedTopic = "blocked";
+    public const string BlockedAnswer =
+        "I can't help with that request. I can answer questions about your battery, solar, and electricity rates.";
 
     private static readonly JsonSerializerOptions ToolJson = new(JsonSerializerDefaults.Web);
 
@@ -37,7 +50,8 @@ public sealed class AgentRunner(IChatModel model, ToolRegistry tools, HomeClock 
         budget.CancelAfter(TotalBudget);
 
         var stopwatch = Stopwatch.StartNew();
-        var items = conversation.ToList();
+        // The reminder sits right after the visitor's latest message, so it's the last thing the model reads.
+        var items = conversation.Append(new DeveloperNoteItem(SystemPrompt.Reminder)).ToList();
         var records = new List<ToolCallRecord>();
         var citable = new Dictionary<string, Citation>(StringComparer.Ordinal);
         var definitions = tools.All.Select(t => new ToolDefinition(t.Name, t.Description, t.ParametersSchema)).ToList();
@@ -102,6 +116,21 @@ public sealed class AgentRunner(IChatModel model, ToolRegistry tools, HomeClock 
                 }
             }
 
+            reply = EnforceTopic(reply);
+
+            // Layer 4: an independent reviewer checks the answer itself. Fixed declines skip it.
+            // If the judge can't be reached, its exception propagates: nothing unchecked is shown.
+            if (reply.Topic != ReplyTopic.OffTopic)
+            {
+                var question = conversation.OfType<UserItem>().LastOrDefault()?.Text ?? string.Empty;
+                var verdict = await judge.ReviewAsync(question, reply.Answer, budget.Token);
+                if (!verdict.Allowed)
+                {
+                    logger.LogWarning("Answer judge withheld a {Topic} reply ({Category}).", reply.Topic, verdict.Category);
+                    reply = new AgentReply(BlockedTopic, BlockedAnswer, [], DefaultSuggestion);
+                }
+            }
+
             var citations = reply.Citations.Where(citable.ContainsKey).Select(id => citable[id]).ToList();
             var unknown = reply.Citations.Where(id => !citable.ContainsKey(id)).ToList();
             if (unknown.Count > 0)
@@ -115,16 +144,34 @@ public sealed class AgentRunner(IChatModel model, ToolRegistry tools, HomeClock 
 
             // Never log message text: only tool names, sizes, timing, and token counts.
             logger.LogInformation(
-                "Agent answered in {ElapsedMs} ms after {Rounds} tool round(s) [{Tools}], {InputTokens} input and {OutputTokens} output tokens, limit reached: {LimitReached}.",
-                stopwatch.ElapsedMilliseconds, rounds, string.Join(", ", records.Select(r => r.Name)), usage.Input, usage.Output, limitReached);
+                "Agent answered {Topic} in {ElapsedMs} ms after {Rounds} tool round(s) [{Tools}], {InputTokens} input and {OutputTokens} output tokens, limit reached: {LimitReached}.",
+                reply.Topic, stopwatch.ElapsedMilliseconds, rounds, string.Join(", ", records.Select(r => r.Name)), usage.Input, usage.Output, limitReached);
 
-            return new AgentResult(answer, records, citations, reply.SuggestedQuestion, limitReached);
+            return new AgentResult(reply.Topic, answer, records, citations, reply.SuggestedQuestion, limitReached);
         }
         catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
             throw new ChatModelException(ChatModelFailure.Timeout, "The agent ran out of time.", ex);
         }
     }
+
+    /// <summary>
+    /// The model labels its own reply; the server decides what that label allows. Off-topic replies are
+    /// replaced with fixed wording (whatever the model wrote is dropped), and safety replies always carry
+    /// the electrician referral.
+    /// </summary>
+    internal static AgentReply EnforceTopic(AgentReply reply) => reply.Topic switch
+    {
+        ReplyTopic.OffTopic => new AgentReply(
+            ReplyTopic.OffTopic,
+            OffTopicAnswer,
+            [],
+            string.IsNullOrWhiteSpace(reply.SuggestedQuestion) ? DefaultSuggestion : reply.SuggestedQuestion),
+        ReplyTopic.Safety when !reply.Answer.Contains("licensed electrician", StringComparison.OrdinalIgnoreCase) =>
+            reply with { Answer = $"{reply.Answer}\n\n{ElectricianNote}", SuggestedQuestion = null },
+        ReplyTopic.Safety => reply with { SuggestedQuestion = null },
+        _ => reply with { SuggestedQuestion = null },
+    };
 
     private async Task<ToolCallRecord> RunToolAsync(ToolCallItem call, Dictionary<string, Citation> citable, CancellationToken cancellationToken)
     {

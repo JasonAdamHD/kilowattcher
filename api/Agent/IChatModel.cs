@@ -48,6 +48,9 @@ public enum ChatModelFailure
 
     /// <summary>The model's reply failed JSON validation twice.</summary>
     InvalidReply,
+
+    /// <summary>Azure's content filter or Prompt Shields blocked the request.</summary>
+    Blocked,
 }
 
 public sealed class ChatModelException(ChatModelFailure failure, string message, Exception? inner = null)

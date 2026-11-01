@@ -16,7 +16,9 @@ export const newId = () => nextId++
 /** Turns the visible conversation into the history the API expects. */
 export function toHistory(messages: Message[]): HistoryMessage[] {
   return messages.map((m) =>
-    m.role === 'user' ? { role: 'user', content: m.text } : { role: 'assistant', content: m.reply.answer },
+    m.role === 'user'
+      ? { role: 'user', content: m.text }
+      : { role: 'assistant', content: m.reply.answer, signature: m.reply.signature },
   )
 }
 

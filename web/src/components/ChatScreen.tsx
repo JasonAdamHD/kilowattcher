@@ -6,7 +6,7 @@ import { CitationOverlay } from './CitationOverlay'
 import { Composer } from './Composer'
 import { LogoMark } from './Icons'
 
-type Failure = { kind: ApiFailure['kind']; question: string; retryAfterSeconds?: number }
+type Failure = { kind: ApiFailure['kind']; question: string; retryAfterSeconds?: number; error?: string }
 
 type Props = {
   messages: Message[]
@@ -61,6 +61,7 @@ export function ChatScreen({ messages, setMessages, pendingQuestion, onPendingQu
         kind: result.kind,
         question,
         retryAfterSeconds: result.kind === 'rate_limited' ? result.retryAfterSeconds : undefined,
+        error: result.kind === 'bad_request' ? result.error : undefined,
       })
     },
     [messages, setMessages, onSessionExpired],
@@ -202,7 +203,9 @@ function describeFailure(failure: Failure): { text: string; canRetry: boolean } 
     case 'offline':
       return { text: 'You appear to be offline.', canRetry: true }
     case 'bad_request':
-      return { text: "That question couldn't be sent. Try a shorter one.", canRetry: false }
+      return failure.error === 'invalid_history'
+        ? { text: "This conversation can't continue. Tap New chat to start again.", canRetry: false }
+        : { text: "That question couldn't be sent. Try a shorter one.", canRetry: false }
     default:
       return { text: 'Something went wrong reaching the assistant.', canRetry: true }
   }

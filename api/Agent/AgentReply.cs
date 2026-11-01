@@ -3,7 +3,17 @@ using System.Text.Json;
 namespace Kilowattcher.Api.Agent;
 
 /// <summary>The JSON the model must return as its final answer.</summary>
-public sealed record AgentReply(string Answer, IReadOnlyList<string> Citations, string? SuggestedQuestion);
+public sealed record AgentReply(string Topic, string Answer, IReadOnlyList<string> Citations, string? SuggestedQuestion);
+
+/// <summary>What the model says the reply is about. The server acts on it; see AgentRunner.</summary>
+public static class ReplyTopic
+{
+    public const string HomeEnergy = "home_energy";
+    public const string OffTopic = "off_topic";
+    public const string Safety = "safety";
+
+    public static readonly string[] All = [HomeEnergy, OffTopic, Safety];
+}
 
 public static class AgentReplyFormat
 {
@@ -15,6 +25,11 @@ public static class AgentReplyFormat
         {
           "type": "object",
           "properties": {
+            "topic": {
+              "type": "string",
+              "enum": ["home_energy", "off_topic", "safety"],
+              "description": "home_energy for normal answers, off_topic for declines, safety for electrical-work referrals."
+            },
             "answer": {
               "type": "string",
               "description": "The reply shown to the visitor: short, plain, friendly."
@@ -29,7 +44,7 @@ public static class AgentReplyFormat
               "description": "When declining an off-topic request, one short home-energy question the visitor could ask instead. Otherwise null."
             }
           },
-          "required": ["answer", "citations", "suggestedQuestion"],
+          "required": ["topic", "answer", "citations", "suggestedQuestion"],
           "additionalProperties": false
         }
         """;
@@ -75,11 +90,18 @@ public static class AgentReplyParser
 
             foreach (var property in root.EnumerateObject())
             {
-                if (property.Name is not ("answer" or "citations" or "suggestedQuestion"))
+                if (property.Name is not ("topic" or "answer" or "citations" or "suggestedQuestion"))
                 {
                     problem = "unexpected property";
                     return null;
                 }
+            }
+
+            if (!root.TryGetProperty("topic", out var topic) || topic.ValueKind != JsonValueKind.String
+                || !ReplyTopic.All.Contains(topic.GetString()))
+            {
+                problem = "invalid topic";
+                return null;
             }
 
             if (!root.TryGetProperty("answer", out var answer) || answer.ValueKind != JsonValueKind.String
@@ -131,7 +153,7 @@ public static class AgentReplyParser
             }
 
             var ids = citations.EnumerateArray().Select(c => c.GetString()!.Trim()).Where(c => c.Length > 0).Distinct().ToList();
-            return new AgentReply(answerText, ids, suggested);
+            return new AgentReply(topic.GetString()!, answerText, ids, suggested);
         }
     }
 }

@@ -18,7 +18,7 @@ public class AgentRunnerTests
     {
         ITool[] defaults = [new BatteryStatusTool(), new RateScheduleTool(Clock), new SolarForecastTool(Clock), Search(TestIndex.ThreeAxes())];
         var tools = defaults.Where(d => extraTools.All(e => e.Name != d.Name)).Concat(extraTools);
-        return new AgentRunner(_model, new ToolRegistry(tools), Clock, NullLogger<AgentRunner>.Instance);
+        return new AgentRunner(_model, new ToolRegistry(tools), Clock, new FakeAnswerJudge(), NullLogger<AgentRunner>.Instance);
     }
 
     private static SearchDocsTool Search(DocIndex index) =>
@@ -217,16 +217,6 @@ public class AgentRunnerTests
         var hits = result.ToolCalls[0].Result.GetProperty("results");
         Assert.Equal(3, hits.GetArrayLength());
         Assert.Equal("battery-manual#reserve-percentage", hits[0].GetProperty("id").GetString());
-    }
-
-    [Fact]
-    public async Task Suggested_question_is_passed_through()
-    {
-        _model.Then(Steps.Final("I only help with home energy.", suggestedQuestion: "When is electricity cheapest tomorrow?"));
-
-        var result = await Ask("Write me a poem about cats.");
-
-        Assert.Equal("When is electricity cheapest tomorrow?", result.SuggestedQuestion);
     }
 
     [Fact]

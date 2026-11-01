@@ -1,18 +1,22 @@
 namespace Kilowattcher.Api.Agent;
 
-public sealed record ChatHistoryMessage(string? Role, string? Content);
+/// <param name="Signature">Required on assistant turns: the signature the API returned with that answer.</param>
+public sealed record ChatHistoryMessage(string? Role, string? Content, string? Signature = null);
 
 public sealed record ChatRequest(string? Message, IReadOnlyList<ChatHistoryMessage>? History);
 
 /// <summary>
 /// toolCalls lists the tools the server ran, with arguments and raw results, so the UI can show them.
 /// suggestedQuestion is set only when the agent declines an off-topic request.
+/// topic is home_energy, off_topic, or safety. signature must be sent back with this answer in history.
 /// </summary>
 public sealed record ChatResponse(
+    string Topic,
     string Answer,
     IReadOnlyList<ToolCallRecord> ToolCalls,
     IReadOnlyList<Citation> Citations,
-    string? SuggestedQuestion);
+    string? SuggestedQuestion,
+    string Signature);
 
 public static class ChatLimits
 {
