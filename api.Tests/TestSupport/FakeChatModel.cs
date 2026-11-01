@@ -53,3 +53,31 @@ public sealed class MutableTimeProvider(DateTimeOffset now) : TimeProvider
 
     public override DateTimeOffset GetUtcNow() => Now;
 }
+
+/// <summary>Allows everything unless told otherwise; records what it reviewed.</summary>
+public sealed class FakeAnswerJudge : Kilowattcher.Api.Safety.IAnswerJudge
+{
+    public List<(string Question, string Answer)> Reviews { get; } = [];
+
+    public Func<string, Kilowattcher.Api.Safety.JudgeVerdict> Verdict { get; set; } = _ => new(true, "none");
+
+    public Task<Kilowattcher.Api.Safety.JudgeVerdict> ReviewAsync(string question, string answer, CancellationToken cancellationToken)
+    {
+        Reviews.Add((question, answer));
+        return Task.FromResult(Verdict(answer));
+    }
+}
+
+/// <summary>Flags nothing unless told otherwise; records what it checked.</summary>
+public sealed class FakePromptShield : Kilowattcher.Api.Safety.IPromptShield
+{
+    public List<string> Checked { get; } = [];
+
+    public Func<string, bool> IsAttack { get; set; } = _ => false;
+
+    public Task<bool> IsAttackAsync(string message, CancellationToken cancellationToken)
+    {
+        Checked.Add(message);
+        return Task.FromResult(IsAttack(message));
+    }
+}

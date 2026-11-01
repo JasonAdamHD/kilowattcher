@@ -18,7 +18,7 @@ public class GuardrailTests
     private readonly FakeChatModel _model = new();
 
     private Task<AgentResult> Ask(params AgentItem[] conversation) =>
-        new AgentRunner(_model, new ToolRegistry([new BatteryStatusTool()]), Clock, NullLogger<AgentRunner>.Instance)
+        new AgentRunner(_model, new ToolRegistry([new BatteryStatusTool()]), Clock, new FakeAnswerJudge(), NullLogger<AgentRunner>.Instance)
             .RunAsync(conversation, CancellationToken.None);
 
     [Fact]

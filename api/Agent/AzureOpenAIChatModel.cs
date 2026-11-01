@@ -85,6 +85,12 @@ public sealed class AzureOpenAIChatModel : IChatModel
         {
             throw new ChatModelException(ChatModelFailure.Timeout, "Azure OpenAI did not answer within 30 seconds.", ex);
         }
+        catch (ClientResultException ex) when (IsContentFilter(ex))
+        {
+            // The deployment's guardrail (content filter / Prompt Shields) refused the request.
+            _logger.LogWarning("Azure content filter blocked a request.");
+            throw new ChatModelException(ChatModelFailure.Blocked, "Azure content filter blocked the request.", ex);
+        }
         catch (ClientResultException ex)
         {
             // Log the status only; Azure error bodies can echo request content.
@@ -93,6 +99,10 @@ public sealed class AzureOpenAIChatModel : IChatModel
             throw new ChatModelException(failure, $"Azure OpenAI returned HTTP {ex.Status}.", ex);
         }
     }
+
+    internal static bool IsContentFilter(ClientResultException ex) =>
+        ex.Status == StatusCodes.Status400BadRequest
+        && (ex.GetRawResponse()?.Content?.ToString() ?? string.Empty).Contains("content_filter", StringComparison.OrdinalIgnoreCase);
 
     private static ResponseItem ToResponseItem(AgentItem item) => item switch
     {

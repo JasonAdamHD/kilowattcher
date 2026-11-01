@@ -25,6 +25,10 @@ public sealed class KilowattcherFactory : WebApplicationFactory<Program>
 
     public FakeEmbeddingClient Embeddings { get; } = new();
 
+    public FakeAnswerJudge Judge { get; } = new();
+
+    public FakePromptShield Shield { get; } = new();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -37,6 +41,8 @@ public sealed class KilowattcherFactory : WebApplicationFactory<Program>
         {
             services.AddSingleton<IChatModel>(ChatModel);
             services.AddSingleton<IEmbeddingClient>(Embeddings);
+            services.AddSingleton<Kilowattcher.Api.Safety.IAnswerJudge>(Judge);
+            services.AddSingleton<Kilowattcher.Api.Safety.IPromptShield>(Shield);
             services.AddSingleton(TestIndex.Provider(TestIndex.ThreeAxes()));
         });
     }

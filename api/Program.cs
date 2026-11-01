@@ -2,6 +2,7 @@ using Kilowattcher.Api;
 using Kilowattcher.Api.Agent;
 using Kilowattcher.Api.Auth;
 using Kilowattcher.Api.Rag;
+using Kilowattcher.Api.Safety;
 using Kilowattcher.Api.Tools;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -25,6 +26,8 @@ builder.Services.AddSingleton<DocIndexProvider>();
 builder.Services.AddSingleton<IEmbeddingClient, AzureEmbeddingClient>();
 builder.Services.AddSingleton<ITool, SearchDocsTool>();
 builder.Services.AddSingleton<ToolRegistry>();
+builder.Services.AddSingleton<IAnswerJudge, AzureAnswerJudge>();
+builder.Services.AddHttpClient<IPromptShield, AzurePromptShield>(client => client.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddSingleton<AgentRunner>();
 builder.Services.AddKilowattcherRateLimits(); // needs TimeProvider, registered above
 

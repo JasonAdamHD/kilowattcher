@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Kilowattcher.Api.Safety;
 using Kilowattcher.Api.Tools;
 
 namespace Kilowattcher.Api.Agent;
@@ -22,7 +23,7 @@ public sealed record AgentResult(
 /// The agent loop: system prompt → model → run requested tools → feed results back → repeat,
 /// with a hard limit of 5 tool rounds. Then the reply is validated as JSON, with one retry.
 /// </summary>
-public sealed class AgentRunner(IChatModel model, ToolRegistry tools, HomeClock clock, ILogger<AgentRunner> logger)
+public sealed class AgentRunner(IChatModel model, ToolRegistry tools, HomeClock clock, IAnswerJudge judge, ILogger<AgentRunner> logger)
 {
     public const int MaxToolRounds = 5;
     public const string RoundLimitNote = "I may have missed something; try a narrower question.";
@@ -32,6 +33,11 @@ public sealed class AgentRunner(IChatModel model, ToolRegistry tools, HomeClock 
         "I can only help with home energy: your battery, solar, and electricity rates. Want to try one of those?";
     public const string DefaultSuggestion = "When is electricity cheapest tomorrow?";
     public const string ElectricianNote = "For any wiring or panel work, please contact a licensed electrician.";
+
+    // Used when a safety layer (the answer judge or Prompt Shields) withholds a reply.
+    public const string BlockedTopic = "blocked";
+    public const string BlockedAnswer =
+        "I can't help with that request. I can answer questions about your battery, solar, and electricity rates.";
 
     private static readonly JsonSerializerOptions ToolJson = new(JsonSerializerDefaults.Web);
 
@@ -111,6 +117,19 @@ public sealed class AgentRunner(IChatModel model, ToolRegistry tools, HomeClock 
             }
 
             reply = EnforceTopic(reply);
+
+            // Layer 4: an independent reviewer checks the answer itself. Fixed declines skip it.
+            // If the judge can't be reached, its exception propagates: nothing unchecked is shown.
+            if (reply.Topic != ReplyTopic.OffTopic)
+            {
+                var question = conversation.OfType<UserItem>().LastOrDefault()?.Text ?? string.Empty;
+                var verdict = await judge.ReviewAsync(question, reply.Answer, budget.Token);
+                if (!verdict.Allowed)
+                {
+                    logger.LogWarning("Answer judge withheld a {Topic} reply ({Category}).", reply.Topic, verdict.Category);
+                    reply = new AgentReply(BlockedTopic, BlockedAnswer, [], DefaultSuggestion);
+                }
+            }
 
             var citations = reply.Citations.Where(citable.ContainsKey).Select(id => citable[id]).ToList();
             var unknown = reply.Citations.Where(id => !citable.ContainsKey(id)).ToList();

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Kilowattcher.Api.Auth;
+using Kilowattcher.Api.Safety;
 
 namespace Kilowattcher.Api.Agent;
 
@@ -8,7 +9,7 @@ public static class ChatEndpoints
     public static void MapChatEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost("/api/chat", async (ChatRequest? request, HttpContext http, SessionTokenService sessions,
-                AgentRunner agent, HistorySigner signer, ILoggerFactory loggers, CancellationToken cancellationToken) =>
+                AgentRunner agent, IPromptShield shield, HistorySigner signer, ILoggerFactory loggers, CancellationToken cancellationToken) =>
         {
             if (!http.HasValidSession(sessions))
             {
@@ -35,9 +36,21 @@ public static class ChatEndpoints
             var stopwatch = Stopwatch.StartNew();
             try
             {
+                // Layer 5: Prompt Shields screens the visitor's message before any model sees it.
+                if (await shield.IsAttackAsync(request.Message!, cancellationToken))
+                {
+                    loggers.CreateLogger("Chat").LogWarning("Prompt Shields flagged a message; the agent did not run.");
+                    return Blocked(signer);
+                }
+
                 var result = await agent.RunAsync(conversation, cancellationToken);
                 return Results.Ok(new ChatResponse(
                     result.Topic, result.Answer, result.ToolCalls, result.Citations, result.SuggestedQuestion, signer.Sign(result.Answer)));
+            }
+            catch (ChatModelException ex) when (ex.Failure == ChatModelFailure.Blocked)
+            {
+                loggers.CreateLogger("Chat").LogWarning("Azure's guardrail blocked a chat request.");
+                return Blocked(signer);
             }
             catch (ChatModelException ex)
             {
@@ -53,4 +66,9 @@ public static class ChatEndpoints
             }
         }).RequireChatRateLimit();
     }
+
+    /// <summary>A normal, signed reply, so the visitor sees a polite decline and can keep chatting.</summary>
+    private static IResult Blocked(HistorySigner signer) =>
+        Results.Ok(new ChatResponse(
+            AgentRunner.BlockedTopic, AgentRunner.BlockedAnswer, [], [], AgentRunner.DefaultSuggestion, signer.Sign(AgentRunner.BlockedAnswer)));
 }

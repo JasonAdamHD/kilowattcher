@@ -15,7 +15,7 @@ export type Citation = {
 }
 
 export type ChatReply = {
-  topic: 'home_energy' | 'off_topic' | 'safety'
+  topic: 'home_energy' | 'off_topic' | 'safety' | 'blocked'
   answer: string
   toolCalls: ToolCall[]
   citations: Citation[]

@@ -18,7 +18,7 @@ public class AgentRunnerTests
     {
         ITool[] defaults = [new BatteryStatusTool(), new RateScheduleTool(Clock), new SolarForecastTool(Clock), Search(TestIndex.ThreeAxes())];
         var tools = defaults.Where(d => extraTools.All(e => e.Name != d.Name)).Concat(extraTools);
-        return new AgentRunner(_model, new ToolRegistry(tools), Clock, NullLogger<AgentRunner>.Instance);
+        return new AgentRunner(_model, new ToolRegistry(tools), Clock, new FakeAnswerJudge(), NullLogger<AgentRunner>.Instance);
     }
 
     private static SearchDocsTool Search(DocIndex index) =>
