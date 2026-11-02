@@ -546,3 +546,130 @@ p:last-child {
 .overlay__text {
   white-space: pre-wrap;
 }
+
+/* Settings: a bottom sheet on phones, a side panel that pops in and out on wide screens. */
+.header__actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.chat__layout {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.chat__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  max-height: 85dvh;
+  overflow-y: auto;
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+  padding: var(--space-3) var(--space-2) calc(var(--space-3) + env(safe-area-inset-bottom));
+  background: var(--color-surface);
+  border-top: 1px solid color-mix(in srgb, var(--color-muted) 30%, transparent);
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -8px 24px var(--color-scrim);
+}
+
+.settings[hidden] {
+  display: none;
+}
+
+.settings-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 15;
+  background: var(--color-scrim);
+}
+
+.settings__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.settings__header h2 {
+  margin: 0;
+}
+
+.settings__prices {
+  margin: 0;
+  padding: 0;
+  border: none;
+  display: grid;
+  gap: var(--space-1);
+}
+
+.settings input[type='range'] {
+  width: 100%;
+  accent-color: var(--color-solar-amber);
+}
+
+@media (min-width: 900px) {
+  .settings {
+    position: sticky;
+    top: 57px;
+    z-index: auto;
+    flex: none;
+    width: 340px;
+    height: calc(100dvh - 57px);
+    max-height: none;
+    border-top: none;
+    border-left: 1px solid color-mix(in srgb, var(--color-muted) 30%, transparent);
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .settings-backdrop {
+    display: none;
+  }
+}
+
+.header__actions .button {
+  white-space: nowrap;
+}
+
+.header__settings {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.icon--button {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+}
+
+/* On a phone the Settings button is just the gear; its label stays for screen readers. */
+@media (max-width: 479px) {
+  .header__settings {
+    padding: 0 10px;
+  }
+
+  .header__settings-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .header__name {
+    font-size: 16px;
+  }
+}

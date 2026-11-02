@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
-import { api, type ApiFailure, type Citation } from '../api'
+import { api, type ApiFailure, type Citation, type HouseholdSettings, type SettingsOptions } from '../api'
 import { newId, STARTER_QUESTIONS, toHistory, type Message } from '../conversation'
 import { AssistantReply } from './AssistantReply'
 import { CitationOverlay } from './CitationOverlay'
 import { Composer } from './Composer'
-import { LogoMark } from './Icons'
+import { GearIcon, LogoMark } from './Icons'
+import { SettingsPanel } from './SettingsPanel'
 
 type Failure = { kind: ApiFailure['kind']; question: string; retryAfterSeconds?: number; error?: string }
 
@@ -24,6 +25,31 @@ export function ChatScreen({ messages, setMessages, pendingQuestion, onPendingQu
   const citationTrigger = useRef<HTMLElement | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
 
+  // Household settings: options come from the API; the panel reports what to send with each question.
+  const [options, setOptions] = useState<SettingsOptions | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(() => window.matchMedia?.('(min-width: 900px)').matches ?? false)
+  const settingsRef = useRef<HouseholdSettings | undefined>(undefined)
+  const settingsButton = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    let active = true
+    api.settingsOptions().then((result) => {
+      if (active && result.ok) setOptions(result.data)
+    })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const onSettingsChange = useCallback((settings: HouseholdSettings | undefined) => {
+    settingsRef.current = settings
+  }, [])
+
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false)
+    settingsButton.current?.focus()
+  }, [])
+
   useEffect(() => {
     endRef.current?.scrollIntoView?.({ block: 'end' })
   }, [messages, busy, failure])
@@ -38,7 +64,7 @@ export function ChatScreen({ messages, setMessages, pendingQuestion, onPendingQu
 
       setFailure(null)
       setBusy(true)
-      const result = await api.chat(question, toHistory(before))
+      const result = await api.chat(question, toHistory(before), settingsRef.current)
       setBusy(false)
 
       if (result.ok) {
@@ -111,72 +137,95 @@ export function ChatScreen({ messages, setMessages, pendingQuestion, onPendingQu
             <LogoMark />
             <span className="header__name">Kilowattcher</span>
           </div>
-          <button type="button" className="button button--secondary button--small" onClick={newChat} disabled={busy}>
-            New chat
-          </button>
+          <div className="header__actions">
+            {options && (
+              <button
+                ref={settingsButton}
+                type="button"
+                className="button button--secondary button--small header__settings"
+                aria-expanded={settingsOpen}
+                aria-controls="settings-panel"
+                onClick={() => setSettingsOpen((open) => !open)}
+              >
+                <GearIcon />
+                <span className="header__settings-label">Settings</span>
+              </button>
+            )}
+            <button type="button" className="button button--secondary button--small" onClick={newChat} disabled={busy}>
+              New chat
+            </button>
+          </div>
         </div>
       </header>
 
-      <main className="chat__body">
-        <section className="messages" aria-live="polite" aria-label="Conversation">
-          {messages.length === 0 && !busy && (
-            <div className="starters">
-              <h1>What can I help with?</h1>
-              <p className="muted">Answers use your battery, rate plan, solar forecast, and documents.</p>
-              <ul>
-                {STARTER_QUESTIONS.map((q) => (
-                  <li key={q}>
-                    <button type="button" className="starter" onClick={() => ask(q)}>
-                      {q}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+      <div className={settingsOpen ? 'chat__layout chat__layout--with-settings' : 'chat__layout'}>
+        <div className="chat__main">
+          <main className="chat__body">
+            <section className="messages" aria-live="polite" aria-label="Conversation">
+              {messages.length === 0 && !busy && (
+                <div className="starters">
+                  <h1>What can I help with?</h1>
+                  <p className="muted">Answers use your battery, rate plan, solar forecast, and documents.</p>
+                  <ul>
+                    {STARTER_QUESTIONS.map((q) => (
+                      <li key={q}>
+                        <button type="button" className="starter" onClick={() => ask(q)}>
+                          {q}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+    
+              {messages.map((message) =>
+                message.role === 'user' ? (
+                  <p key={message.id} className="bubble bubble--user">
+                    {message.text}
+                  </p>
+                ) : (
+                  <AssistantReply
+                    key={message.id}
+                    messageId={message.id}
+                    reply={message.reply}
+                    onOpenCitation={openCitation}
+                    onAsk={ask}
+                  />
+                ),
+              )}
+    
+              {busy && (
+                <div className="loading" role="status">
+                  <span className="dots" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                  Checking your battery and rates…
+                </div>
+              )}
+    
+              {failure && <ErrorCard failure={failure} onRetry={() => void send(failure.question, { retry: true })} />}
+              <div ref={endRef} />
+            </section>
+          </main>
+    
+          <footer className="chat__footer">
+            <Composer value={draft} onChange={setDraft} onSend={sendDraft} busy={busy} />
+            <p className="attribution">
+              Solar forecasts use weather data by{' '}
+              <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">
+                Open-Meteo.com
+              </a>{' '}
+              (CC BY 4.0)
+            </p>
+          </footer>
+        </div>
 
-          {messages.map((message) =>
-            message.role === 'user' ? (
-              <p key={message.id} className="bubble bubble--user">
-                {message.text}
-              </p>
-            ) : (
-              <AssistantReply
-                key={message.id}
-                messageId={message.id}
-                reply={message.reply}
-                onOpenCitation={openCitation}
-                onAsk={ask}
-              />
-            ),
-          )}
-
-          {busy && (
-            <div className="loading" role="status">
-              <span className="dots" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-              </span>
-              Checking your battery and rates…
-            </div>
-          )}
-
-          {failure && <ErrorCard failure={failure} onRetry={() => void send(failure.question, { retry: true })} />}
-          <div ref={endRef} />
-        </section>
-      </main>
-
-      <footer className="chat__footer">
-        <Composer value={draft} onChange={setDraft} onSend={sendDraft} busy={busy} />
-        <p className="attribution">
-          Solar forecasts use weather data by{' '}
-          <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">
-            Open-Meteo.com
-          </a>{' '}
-          (CC BY 4.0)
-        </p>
-      </footer>
+        {options && (
+          <SettingsPanel options={options} open={settingsOpen} onClose={closeSettings} onChange={onSettingsChange} />
+        )}
+      </div>
 
       {citation && <CitationOverlay citation={citation} onClose={closeCitation} />}
     </div>
@@ -210,6 +259,9 @@ function describeFailure(failure: Failure): { text: string; canRetry: boolean } 
     case 'offline':
       return { text: 'You appear to be offline.', canRetry: true }
     case 'bad_request':
+      if (failure.error && ['unknown_battery', 'invalid_charge', 'unknown_city', 'invalid_price'].includes(failure.error)) {
+        return { text: "Some settings aren't valid. Check the settings panel, or reset to defaults.", canRetry: false }
+      }
       return failure.error === 'invalid_history'
         ? { text: "This conversation can't continue. Tap New chat to start again.", canRetry: false }
         : { text: "That question couldn't be sent. Try a shorter one.", canRetry: false }
