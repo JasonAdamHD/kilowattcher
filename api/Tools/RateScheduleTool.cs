@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Kilowattcher.Api.Households;
 
 namespace Kilowattcher.Api.Tools;
 
@@ -10,21 +11,21 @@ public sealed record RateSchedule(
     string Date,
     string TimeZone,
     string Currency,
-    IReadOnlyList<RatePeriod> Periods);
+    IReadOnlyList<RatePeriod> Periods,
+    bool PricesChangedInSettings);
 
-/// <summary>Mock time-of-use plan. The same periods apply every day.</summary>
-public sealed class RateScheduleTool(HomeClock clock) : ITool
+/// <summary>
+/// The household's time-of-use plan: fixed hours, with prices from config or the visitor's settings.
+/// The same periods apply every day.
+/// </summary>
+public sealed class RateScheduleTool : ITool
 {
     public const string Utility = "Brightline Energy";
     public const string Plan = "Sunrise Saver";
 
-    public static readonly IReadOnlyList<RatePeriod> Periods =
-    [
-        new("Super off-peak", "00:00", "06:00", 0.11m),
-        new("Off-peak", "06:00", "16:00", 0.24m),
-        new("Peak", "16:00", "21:00", 0.48m),
-        new("Off-peak", "21:00", "24:00", 0.24m),
-    ];
+    /// <summary>The published plan prices, as in time-of-use-plan.md (a test keeps them in step).</summary>
+    public static IReadOnlyList<RatePeriod> DefaultPeriods { get; } =
+        Household.Periods(new RatePrices().SuperOffPeak, new RatePrices().OffPeak, new RatePrices().Peak);
 
     public string Name => "get_rate_schedule";
 
@@ -34,21 +35,24 @@ public sealed class RateScheduleTool(HomeClock clock) : ITool
 
     public string ParametersSchema => ToolArguments.DateOnlySchema;
 
-    public Task<object> ExecuteAsync(JsonElement arguments, CancellationToken cancellationToken) =>
-        Task.FromResult(Execute(arguments));
+    public Task<object> ExecuteAsync(JsonElement arguments, ToolContext context, CancellationToken cancellationToken) =>
+        Task.FromResult(Execute(arguments, context));
 
-    internal object Execute(JsonElement arguments)
+    internal static object Execute(JsonElement arguments, ToolContext context)
     {
         if (!ToolArguments.TryGetDate(arguments, out var date))
         {
             return new ToolError("date must be a local date formatted YYYY-MM-DD.");
         }
 
-        if (date < clock.Today.AddDays(-30) || date > clock.Today.AddDays(30))
+        var today = context.Clock.Today;
+        if (date < today.AddDays(-30) || date > today.AddDays(30))
         {
             return new ToolError("Rates are available within 30 days of today.");
         }
 
-        return new RateSchedule(Utility, Plan, date.ToString("yyyy-MM-dd"), clock.Label, "USD", Periods);
+        var periods = context.Household.RatePeriods;
+        return new RateSchedule(Utility, Plan, date.ToString("yyyy-MM-dd"), context.Clock.Label, "USD", periods,
+            !periods.SequenceEqual(DefaultPeriods));
     }
 }

@@ -5,7 +5,7 @@ namespace Kilowattcher.Api.Rag;
 /// <summary>The on-disk format of api/Data/embeddings.json, written by tools/embed.</summary>
 public sealed record EmbeddingFile(string Deployment, int Dimensions, IReadOnlyList<EmbeddedChunk> Chunks);
 
-public sealed record EmbeddedChunk(string Id, string Title, string Heading, string Text, string ContentHash, float[] Vector);
+public sealed record EmbeddedChunk(string Id, string Title, string Heading, string Text, string ContentHash, float[] Vector, string? Product = null);
 
 public sealed record DocMatch(DocChunk Chunk, double Score);
 
@@ -44,7 +44,7 @@ public sealed class DocIndex
     public static DocIndex Empty { get; } = new(0, []);
 
     public static DocIndex FromFile(EmbeddingFile file) =>
-        new(file.Dimensions, file.Chunks.Select(c => (new DocChunk(c.Id, c.Title, c.Heading, c.Text), c.Vector)));
+        new(file.Dimensions, file.Chunks.Select(c => (new DocChunk(c.Id, c.Title, c.Heading, c.Text, c.Product), c.Vector)));
 
     public static EmbeddingFile ReadFile(string path) =>
         JsonSerializer.Deserialize<EmbeddingFile>(File.ReadAllText(path), Json)
@@ -66,7 +66,11 @@ public sealed class DocIndex
     }
 
     /// <summary>Top matches by cosine similarity, best first.</summary>
-    public IReadOnlyList<DocMatch> Search(ReadOnlySpan<float> query, int top)
+    /// <param name="product">
+    /// When set, only shared chunks (no product) and chunks for this product are considered: metadata
+    /// filtering, so a VoltNest home never gets the Helio manual and vice versa.
+    /// </param>
+    public IReadOnlyList<DocMatch> Search(ReadOnlySpan<float> query, int top, string? product = null)
     {
         if (query.Length != Dimensions)
         {
@@ -75,6 +79,7 @@ public sealed class DocIndex
 
         var unitQuery = Normalize(query.ToArray());
         return _entries
+            .Where(e => product is null || e.Chunk.Product is null || e.Chunk.Product == product)
             .Select(e => new DocMatch(e.Chunk, Dot(unitQuery, e.Unit)))
             .OrderByDescending(m => m.Score)
             .ThenBy(m => m.Chunk.Id, StringComparer.Ordinal)

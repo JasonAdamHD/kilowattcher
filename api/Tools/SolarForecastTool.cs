@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Kilowattcher.Api.Households;
 using Kilowattcher.Api.Weather;
 
 namespace Kilowattcher.Api.Tools;
@@ -21,9 +22,8 @@ public sealed record SolarForecast(
 /// where 0.8 covers inverter, wiring, heat, and dust losses. A clear Phoenix November day gives about
 /// 34–37 kWh, matching solar-basics.md.
 /// </summary>
-public sealed class SolarForecastTool(HomeClock clock, IWeatherSource weather) : ITool
+public sealed class SolarForecastTool(IWeatherSource weather) : ITool
 {
-    public const double SystemSizeKw = 7.2;
     public const double PerformanceRatio = 0.8;
     public const int DaysAhead = 6;
 
@@ -37,14 +37,14 @@ public sealed class SolarForecastTool(HomeClock clock, IWeatherSource weather) :
 
     public string ParametersSchema => ToolArguments.DateOnlySchema;
 
-    public async Task<object> ExecuteAsync(JsonElement arguments, CancellationToken cancellationToken)
+    public async Task<object> ExecuteAsync(JsonElement arguments, ToolContext context, CancellationToken cancellationToken)
     {
         if (!ToolArguments.TryGetDate(arguments, out var date))
         {
             return new ToolError("date must be a local date formatted YYYY-MM-DD.");
         }
 
-        var today = clock.Today;
+        var today = context.Clock.Today;
         if (date < today || date > today.AddDays(DaysAhead))
         {
             return new ToolError($"Forecasts cover today through {DaysAhead} days ahead ({today:yyyy-MM-dd} to {today.AddDays(DaysAhead):yyyy-MM-dd}).");
@@ -53,7 +53,7 @@ public sealed class SolarForecastTool(HomeClock clock, IWeatherSource weather) :
         IReadOnlyList<WeatherHour> hours;
         try
         {
-            hours = await weather.GetDayAsync(date, cancellationToken);
+            hours = await weather.GetDayAsync(context.Clock, date, cancellationToken);
         }
         catch (WeatherUnavailableException)
         {
@@ -65,15 +65,15 @@ public sealed class SolarForecastTool(HomeClock clock, IWeatherSource weather) :
             return new ToolError($"No forecast is available for {date:yyyy-MM-dd} yet.");
         }
 
-        return Build(date, hours, weather.Description);
+        return Build(date, hours, weather.Description, context.Household.SolarSystemKw);
     }
 
-    internal static SolarForecast Build(DateOnly date, IReadOnlyList<WeatherHour> hours, string source)
+    internal static SolarForecast Build(DateOnly date, IReadOnlyList<WeatherHour> hours, string source, double systemSizeKw = 7.2)
     {
         var hourly = hours
             .Select(h => new SolarHour(
                 h.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture),
-                Math.Round(SystemSizeKw * h.TiltedIrradiance / 1000 * PerformanceRatio, 1),
+                Math.Round(systemSizeKw * h.TiltedIrradiance / 1000 * PerformanceRatio, 1),
                 (int)Math.Round(h.CloudCover)))
             .Where(h => h.Kwh > 0)
             .ToList();
@@ -90,11 +90,11 @@ public sealed class SolarForecastTool(HomeClock clock, IWeatherSource weather) :
 
         return new SolarForecast(
             date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-            SystemSizeKw,
+            systemSizeKw,
             conditions,
             cloud,
             hourly,
-            Math.Round(hours.Sum(h => SystemSizeKw * h.TiltedIrradiance / 1000 * PerformanceRatio), 1),
+            Math.Round(hours.Sum(h => systemSizeKw * h.TiltedIrradiance / 1000 * PerformanceRatio), 1),
             $"{source}. {Attribution}.");
     }
 }

@@ -146,6 +146,33 @@
     }
   },
 
+  // ---------- Second battery (2): settings switch the model; answers must use its manual and specs ----------
+  {
+    "id": "helio-operating-modes",
+    "category": "Second battery",
+    "settings": { "battery": "helio-powercell-10" },
+    "turns": ["What operating modes does my battery have?"],
+    "expect": {
+      "topic": ["home_energy"],
+      "citation": "helio-powercell-manual#operating-modes",
+      "mustContain": [["Solar First"], ["Cost Saver"], ["Storm Guard"]],
+      "mustNotContain": ["Backup Only", "Time-Based"]
+    }
+  },
+  {
+    "id": "helio-backup-time",
+    "category": "Second battery",
+    // (80% - 10% floor) x 10 kWh / 1.2 kW = 5.8 hours, computed in code from the Helio's specs.
+    "settings": { "battery": "helio-powercell-10", "stateOfChargePercent": 80 },
+    "turns": ["How long will my battery last if the power goes out?"],
+    "expect": {
+      "topic": ["home_energy"],
+      "toolsRequired": ["estimate_backup_time"],
+      "mustContain": [["5.8"]],
+      "mustNotContain": ["13.5"]
+    }
+  },
+
   // ---------- Off-topic refusal (4): a polite decline plus a suggestion ----------
   {
     "id": "offtopic-cat-poem",

@@ -10,11 +10,11 @@ On a sunny day, the 7.2 kW rooftop solar system produces about 35 kWh in total. 
 
 ## Cloudy days
 
-On a cloudy day, the rooftop solar system produces roughly a third of what it makes on a sunny day, around 10 kWh instead of 35 kWh, with a midday peak of about 1.5 kWh per hour. That is often not enough to cover the home's daytime use and fill the 13.5 kWh battery. A low solar forecast for tomorrow is the main reason to charge the battery from the grid overnight, during the cheapest hours.
+On a cloudy day, the rooftop solar system produces roughly a third of what it makes on a sunny day, around 10 kWh instead of 35 kWh, with a midday peak of about 1.5 kWh per hour. That is often not enough to cover the home's daytime use and fill the battery. A low solar forecast for tomorrow is the main reason to charge the battery from the grid overnight, during the cheapest hours.
 
 ## How solar and the battery work together
 
-Your rooftop solar system and VoltNest 13 battery share the work in a set order. Solar power goes first to whatever your home is using right now. Any extra solar then charges the battery. Once the battery is full, the rest is exported to the grid for a credit. In the evening, when solar production stops, the battery powers your home with the energy it stored during the day, which keeps you from buying power at peak prices.
+Your rooftop solar system and home battery share the work in a set order. Solar power goes first to whatever your home is using right now. Any extra solar then charges the battery. Once the battery is full, the rest is exported to the grid for a credit. In the evening, when solar production stops, the battery powers your home with the energy it stored during the day, which keeps you from buying power at peak prices.
 
 ## Keeping panels productive
 

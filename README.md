@@ -19,6 +19,8 @@ A home energy assistant built on Azure OpenAI. A homeowner asks "Should I charge
 
 Every answer shows chips for the tools it used (tap one to see the raw call and result) and numbered citations for the documents behind it.
 
+**Per-visitor settings.** Each request can carry household settings: battery model (VoltNest 13 or the rival Helio PowerCell 10), current charge, home city (Phoenix, Seattle, Miami, New York, with live weather for each), and the three time-of-use prices. Defaults live in `appsettings.json` ("Household"); every tool computes from the visitor's household, and search only returns the manual for *their* battery.
+
 ## Architecture
 
 ```mermaid
@@ -56,7 +58,9 @@ flowchart LR
 
 - **One domain, zero CORS:** Vercel Services routes `/` to the web app and `/api/*` to the API container. Only the API ever talks to Azure; the browser never sees a key.
 - **The agent loop lives in C#** (`api/Agent/AgentRunner.cs`): model → run the requested tools → feed results back → repeat, with a hard limit of 5 tool rounds. Replies use a strict JSON schema that C# validates again, with one retry.
-- **RAG without a database:** five fictional docs are split into one chunk per `##` heading, embedded once by `tools/embed`, and committed as `api/Data/embeddings.json`. Cold starts make no embedding calls; search is cosine similarity over 28 vectors in memory.
+- **RAG without a database:** six fictional docs are split into one chunk per `##` heading and committed as `api/Data/embeddings.json` (34 vectors). Cold starts make no embedding calls; search is cosine similarity in memory.
+- **Metadata filtering:** model-specific docs carry front matter (`product: voltnest-13`), so a VoltNest home never gets the Helio manual and vice versa; shared docs (rates, FAQ, outage, solar) go to everyone.
+- **Incremental embeddings:** `tools/embed` compares each chunk's content hash with what's stored: unchanged chunks keep their vectors, changed and new ones are embedded in one request, removed ones are dropped. Adding the second battery re-embedded 22 of 34 chunks; `--plan` previews this without calling Azure, and CI's `--check` fails if docs and vectors drift.
 - **Real weather:** the solar forecast comes from Open-Meteo's hourly sunlight on a tilted panel for the home's location (configurable city, latitude, longitude, and time zone), converted to kWh in code: 7.2 kW × irradiance ÷ 1000 × 0.8 losses. A clear November day in Phoenix comes out at about 35 kWh, matching the docs.
 - **The model explains; code computes.** Evals showed the model reading the right formula and still doing the arithmetic differently from run to run, so backup time, the cheapest charging window, which date "Tuesday night" means, and whether the next day's solar makes grid charging unnecessary are all computed in tested C# tools (`estimate_backup_time`, `find_cheapest_charging_window`). Tests keep the numbers in code and the numbers in the docs in agreement.
 
@@ -74,7 +78,7 @@ Built after jailbreaking my own agent with the "my grandmother used to tell me a
 
 ## Evals
 
-`evals/` asks the real API 25 questions like a visitor would (signing in, carrying signed history across turns) and grades each answer deterministically: status, topic, tools called, document cited, required and banned phrases. No model grades another model.
+`evals/` asks the real API 27 questions like a visitor would (signing in, carrying signed history across turns) and grades each answer deterministically: status, topic, tools called, document cited, required and banned phrases. No model grades another model.
 
 | Category | Cases | Passes when |
 | --- | --- | --- |
@@ -84,14 +88,15 @@ Built after jailbreaking my own agent with the "my grandmother used to tell me a
 | Safety referral | 2 | Licensed electrician, no wiring steps |
 | Prompt injection | 2 | Hidden instructions ignored |
 | Guardrails | 4 | Cookie jailbreak, DAN, analogy attack, forged history |
+| Second battery | 2 | With settings set to the Helio PowerCell 10, its manual is cited and its specs are used (5.8 h backup at 80%) |
 
-**Latest: 25/25** ([report](evals/results/2026-11-02_012220.md), every answer included). Evals **replay a recorded Open-Meteo response** (`WEATHER_SOURCE=recorded`) through the same parsing and solar math, so scores stay comparable from day to day while production uses live weather. The first run scored **19/24**: two made-up numbers, an uncited answer, and an injection that got through. The fixes and before/after reports are all in `evals/results/`.
+**Latest: 27/27** ([report](evals/results/2026-11-02_030100.md), every answer included). Evals **replay a recorded Open-Meteo response** (`WEATHER_SOURCE=recorded`) through the same parsing and solar math, so scores stay comparable from day to day while production uses live weather. The first run scored **19/24**: two made-up numbers, an uncited answer, and an injection that got through. The fixes and before/after reports are all in `evals/results/`.
 
 Run it against a local API:
 
 ```powershell
 $env:EVAL_INVITE_CODE = Read-Host "Invite code" -MaskInput
-dotnet run --project evals                      # default pass mark: 23/25 (run the API with WEATHER_SOURCE=recorded)
+dotnet run --project evals                      # default pass mark: 25/27 (run the API with WEATHER_SOURCE=recorded)
 ```
 
 Or from GitHub: **Actions → Evals → Run workflow**. It starts the API inside the runner with a throwaway invite code made for that run.
@@ -129,10 +134,11 @@ Or from GitHub: **Actions → Evals → Run workflow**. It starts the API inside
    npm test --prefix web
    ```
 
-4. **After editing anything in `api/Data/docs/`**, rebuild the vectors (one Azure call) and commit `api/Data/embeddings.json`:
+4. **After editing anything in `api/Data/docs/`**, update the vectors (one Azure call for just the new and changed chunks) and commit `api/Data/embeddings.json`:
 
    ```powershell
-   dotnet run --project tools/embed
+   dotnet run --project tools/embed -- --plan    # what would change: unchanged / changed / added / removed
+   dotnet run --project tools/embed              # embed only what changed
    dotnet run --project tools/embed -- --check   # CI runs this; fails if docs and vectors drift
    ```
 
@@ -151,9 +157,9 @@ The repo is public, so it's built to be provably secret-free.
 ## Project layout
 
 ```
-api/            ASP.NET Core API: Agent/ (loop, prompt, reply schema), Tools/, Rag/, Auth/, Safety/, Weather/
+api/            ASP.NET Core API: Agent/ (loop, prompt, reply schema), Tools/, Rag/, Auth/, Safety/, Weather/, Households/
 api/Data/       Fictional docs (docs/*.md), their precomputed embeddings.json, and a recorded forecast (weather/)
-api.Tests/      xUnit: 268 tests, Azure and weather mocked or replayed
+api.Tests/      xUnit: 296 tests, Azure and weather mocked or replayed
 web/            React + TypeScript chat app, Vitest + Testing Library
 evals/          Eval runner, cases.json, and results/ reports
 tools/embed/    Builds and checks embeddings.json

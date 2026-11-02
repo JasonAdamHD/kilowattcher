@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Kilowattcher.Api.Households;
 
 namespace Kilowattcher.Api.Tools;
 
@@ -13,7 +14,8 @@ public interface ITool
     /// <summary>JSON Schema for the arguments, in OpenAI strict mode (every property required, no extras).</summary>
     string ParametersSchema { get; }
 
-    Task<object> ExecuteAsync(JsonElement arguments, CancellationToken cancellationToken);
+    /// <param name="context">This request's household (battery, charge, prices, city) and its local clock.</param>
+    Task<object> ExecuteAsync(JsonElement arguments, ToolContext context, CancellationToken cancellationToken);
 }
 
 public sealed record ToolError(string Error);

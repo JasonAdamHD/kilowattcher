@@ -1,3 +1,4 @@
+using Kilowattcher.Api.Households;
 using System.Reflection;
 using System.Text.Json;
 using Kilowattcher.Api.Rag;
@@ -13,7 +14,7 @@ public class ChargingWindowToolTests
         HomeClock.For(new MutableTimeProvider(new DateTimeOffset(2026, 11, day, hour, minute, 0, TimeSpan.FromHours(-7))));
 
     private static ChargingPlan Plan(HomeClock clock, double? target = null, DateOnly? nightOf = null, double? from = null) =>
-        Assert.IsType<ChargingPlan>(ChargingWindowTool.Plan(BatteryStatusTool.Status, clock, new ChargingRequest(nightOf, from, target)));
+        Assert.IsType<ChargingPlan>(ChargingWindowTool.Plan(TestHouseholds.Default, clock, new ChargingRequest(nightOf, from, target)));
 
     [Fact]
     public void Asked_in_the_afternoon_the_cheapest_window_is_tonight_after_midnight()
@@ -83,7 +84,7 @@ public class ChargingWindowToolTests
     [InlineData(30)]
     public void Nothing_to_do_at_or_above_the_target(double target)
     {
-        Assert.IsType<ToolError>(ChargingWindowTool.Plan(BatteryStatusTool.Status, At(1, 13), new ChargingRequest(TargetPercent: target)));
+        Assert.IsType<ToolError>(ChargingWindowTool.Plan(TestHouseholds.Default, At(1, 13), new ChargingRequest(TargetPercent: target)));
     }
 
     [Theory]
@@ -91,7 +92,7 @@ public class ChargingWindowToolTests
     [InlineData(101)]
     public void Targets_outside_1_to_100_are_errors(double target)
     {
-        Assert.IsType<ToolError>(ChargingWindowTool.Plan(BatteryStatusTool.Status, At(1, 13), new ChargingRequest(TargetPercent: target)));
+        Assert.IsType<ToolError>(ChargingWindowTool.Plan(TestHouseholds.Default, At(1, 13), new ChargingRequest(TargetPercent: target)));
     }
 
     [Fact]
@@ -127,9 +128,9 @@ public class ChargingWindowToolTests
     [InlineData("3")]
     public void Nights_outside_the_week_or_badly_written_are_errors(string night)
     {
-        var tool = new ChargingWindowTool(At(1, 13), TestWeather.Recorded(At(1, 13)));
-
-        var result = tool.Execute(JsonSerializer.SerializeToElement(new { night_of = night, from_percent = (double?)null, target_percent = (double?)null }));
+        var result = ChargingWindowTool.Execute(
+            JsonSerializer.SerializeToElement(new { night_of = night, from_percent = (double?)null, target_percent = (double?)null }),
+            TestHouseholds.Context(At(1, 13)));
 
         Assert.IsType<ToolError>(result);
     }
@@ -155,10 +156,10 @@ public class ChargingWindowToolTests
     {
         // The demo question. Replay: tomorrow (Mon) is cloudy; Wednesday is the recording's 3rd day, sunny.
         var clock = At(1, 13);
-        var tool = new ChargingWindowTool(clock, TestWeather.Recorded(clock));
+        var tool = new ChargingWindowTool(TestWeather.Recorded());
 
         var plan = Assert.IsType<ChargingPlan>(await tool.ExecuteAsync(JsonSerializer.SerializeToElement(
-            new { night_of = "Tuesday", from_percent = 33.0, target_percent = (double?)null }), CancellationToken.None));
+            new { night_of = "Tuesday", from_percent = 33.0, target_percent = (double?)null }), TestHouseholds.Context(clock), CancellationToken.None));
 
         Assert.Equal("Tuesday night (early Wednesday), midnight to 1:49 AM", plan.CheapestWindow.Description);
         Assert.Equal("Wednesday", plan.NextDay!.Weekday);
@@ -171,10 +172,10 @@ public class ChargingWindowToolTests
     public async Task Tonight_before_a_cloudy_day_it_is_worth_it()
     {
         var clock = At(1, 13);
-        var tool = new ChargingWindowTool(clock, TestWeather.Recorded(clock));
+        var tool = new ChargingWindowTool(TestWeather.Recorded());
 
         var plan = Assert.IsType<ChargingPlan>(await tool.ExecuteAsync(JsonSerializer.SerializeToElement(
-            new { night_of = "tonight", from_percent = (double?)null, target_percent = (double?)null }), CancellationToken.None));
+            new { night_of = "tonight", from_percent = (double?)null, target_percent = (double?)null }), TestHouseholds.Context(clock), CancellationToken.None));
 
         Assert.Equal("Monday", plan.NextDay!.Weekday);
         Assert.Equal("cloudy", plan.NextDay.Conditions);
@@ -186,10 +187,10 @@ public class ChargingWindowToolTests
     public async Task Without_a_forecast_it_still_plans_but_makes_no_recommendation()
     {
         var clock = At(1, 13);
-        var tool = new ChargingWindowTool(clock, new NoWeather());
+        var tool = new ChargingWindowTool(new NoWeather());
 
         var plan = Assert.IsType<ChargingPlan>(await tool.ExecuteAsync(JsonSerializer.SerializeToElement(
-            new { night_of = (string?)null, from_percent = (double?)null, target_percent = (double?)null }), CancellationToken.None));
+            new { night_of = (string?)null, from_percent = (double?)null, target_percent = (double?)null }), TestHouseholds.Context(clock), CancellationToken.None));
 
         Assert.Equal("unknown", plan.Recommendation);
         Assert.Null(plan.NextDay);
@@ -199,7 +200,7 @@ public class ChargingWindowToolTests
     private sealed class NoWeather : Kilowattcher.Api.Weather.IWeatherSource
     {
         public string Description => "down";
-        public Task<IReadOnlyList<Kilowattcher.Api.Weather.WeatherHour>> GetDayAsync(DateOnly date, CancellationToken cancellationToken) =>
+        public Task<IReadOnlyList<Kilowattcher.Api.Weather.WeatherHour>> GetDayAsync(Kilowattcher.Api.Tools.HomeClock clock, DateOnly date, CancellationToken cancellationToken) =>
             throw new Kilowattcher.Api.Weather.WeatherUnavailableException("down");
     }
 
@@ -208,7 +209,7 @@ public class ChargingWindowToolTests
     [InlineData(101)]
     public void Starting_levels_outside_0_to_100_are_errors(double from)
     {
-        Assert.IsType<ToolError>(ChargingWindowTool.Plan(BatteryStatusTool.Status, At(1, 13), new ChargingRequest(FromPercent: from)));
+        Assert.IsType<ToolError>(ChargingWindowTool.Plan(TestHouseholds.Default, At(1, 13), new ChargingRequest(FromPercent: from)));
     }
 
     [Fact]
@@ -233,15 +234,15 @@ public class ChargingWindowToolTests
     [InlineData(23, 59, "Off-peak")]
     public void Every_minute_of_the_day_maps_to_one_rate_period(int hour, int minute, string expected)
     {
-        Assert.Equal(expected, ChargingWindowTool.PeriodAt(At(1, hour, minute).Now).Name);
+        Assert.Equal(expected, ChargingWindowTool.PeriodAt(At(1, hour, minute).Now, RateScheduleTool.DefaultPeriods).Name);
     }
 
     [Fact]
     public void Runs_through_the_tool_interface_with_a_null_target()
     {
         var clock = HomeClock.For(new MutableTimeProvider(new DateTimeOffset(2026, 11, 1, 20, 0, 0, TimeSpan.Zero))); // 13:00 Phoenix
-        var result = new ChargingWindowTool(clock, TestWeather.Recorded(clock)).Execute(JsonSerializer.SerializeToElement(
-            new { night_of = (string?)null, from_percent = (double?)null, target_percent = (double?)null }));
+        var result = ChargingWindowTool.Execute(JsonSerializer.SerializeToElement(
+            new { night_of = (string?)null, from_percent = (double?)null, target_percent = (double?)null }), TestHouseholds.Context(clock));
 
         Assert.Equal(100, Assert.IsType<ChargingPlan>(result).TargetPercent);
     }
@@ -253,6 +254,6 @@ public class ChargingWindowToolTests
         var section = MarkdownChunker.ChunkDirectory(Path.Combine(root, "api", "Data", "docs"))
             .Single(c => c.Id == "battery-manual#charging-from-the-grid");
 
-        Assert.Contains($"{ChargingWindowTool.RoundTripEfficiency:P0}".Replace(" ", ""), section.Text.Replace(" ", ""));
+        Assert.Contains($"{BatteryCatalog.VoltNest13.RoundTripEfficiency:P0}".Replace(" ", ""), section.Text.Replace(" ", ""));
     }
 }

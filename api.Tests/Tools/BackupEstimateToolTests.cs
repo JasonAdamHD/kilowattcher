@@ -1,6 +1,8 @@
+using Kilowattcher.Api.Households;
 using System.Reflection;
 using System.Text.Json;
 using Kilowattcher.Api.Rag;
+using Kilowattcher.Api.Tests.TestSupport;
 using Kilowattcher.Api.Tools;
 
 namespace Kilowattcher.Api.Tests.Tools;
@@ -13,7 +15,7 @@ public class BackupEstimateToolTests
     public void Current_load_gives_the_documented_answer()
     {
         // (42% - 5%) x 13.5 kWh / 1.2 kW = 4.995 / 1.2 = 4.16 → 4.2 hours, the worked example in outage-backup.md.
-        var estimate = Assert.IsType<BackupEstimate>(new BackupEstimateTool().Execute(Load(null)));
+        var estimate = Assert.IsType<BackupEstimate>(BackupEstimateTool.Estimate(TestHouseholds.Default, null));
 
         Assert.Equal(42, estimate.StateOfChargePercent);
         Assert.Equal(5, estimate.BackupFloorPercent);
@@ -29,7 +31,7 @@ public class BackupEstimateToolTests
     [InlineData(5.0, 1.0)]
     public void A_requested_load_changes_only_the_division(double loadKw, double hours)
     {
-        var estimate = Assert.IsType<BackupEstimate>(new BackupEstimateTool().Execute(Load(loadKw)));
+        var estimate = Assert.IsType<BackupEstimate>(BackupEstimateTool.Estimate(TestHouseholds.Default, loadKw));
 
         Assert.Equal(hours, estimate.EstimatedHours);
         Assert.Equal("requested", estimate.LoadSource);
@@ -41,13 +43,13 @@ public class BackupEstimateToolTests
     [InlineData(6)] // over the 5 kW the battery can supply
     public void Impossible_loads_are_errors(double loadKw)
     {
-        Assert.IsType<ToolError>(new BackupEstimateTool().Execute(Load(loadKw)));
+        Assert.IsType<ToolError>(BackupEstimateTool.Estimate(TestHouseholds.Default, loadKw));
     }
 
     [Fact]
     public void Without_a_current_load_the_model_must_supply_one()
     {
-        var idle = BatteryStatusTool.Status with { Mode = "idle", PowerKw = 0 };
+        var idle = TestHouseholds.Default with { CurrentLoadKw = 0 };
 
         Assert.IsType<ToolError>(BackupEstimateTool.Estimate(idle, null));
         Assert.IsType<BackupEstimate>(BackupEstimateTool.Estimate(idle, 1.0));
@@ -56,7 +58,7 @@ public class BackupEstimateToolTests
     [Fact]
     public void A_battery_at_or_below_the_floor_has_no_backup()
     {
-        var empty = BatteryStatusTool.Status with { StateOfChargePercent = 4 };
+        var empty = TestHouseholds.Default with { StateOfChargePercent = 4 };
 
         var estimate = Assert.IsType<BackupEstimate>(BackupEstimateTool.Estimate(empty, 1.0));
 
@@ -70,7 +72,7 @@ public class BackupEstimateToolTests
         var section = MarkdownChunker.ChunkDirectory(Path.Combine(root, "api", "Data", "docs"))
             .Single(c => c.Id == "outage-backup#how-long-backup-lasts");
 
-        Assert.Contains($"{BackupEstimateTool.BackupFloorPercent}%", section.Text);
+        Assert.Contains($"{BatteryCatalog.VoltNest13.BackupFloorPercent}%", section.Text);
         Assert.Contains("4.2 hours", section.Text);
     }
 

@@ -1,6 +1,7 @@
 using Kilowattcher.Api;
 using Kilowattcher.Api.Agent;
 using Kilowattcher.Api.Auth;
+using Kilowattcher.Api.Households;
 using Kilowattcher.Api.Rag;
 using Kilowattcher.Api.Safety;
 using Kilowattcher.Api.Tools;
@@ -20,7 +21,8 @@ builder.Services.AddSingleton<SessionTokenService>();
 builder.Services.AddSingleton<HistorySigner>();
 builder.Services.AddSingleton<IChatModel, AzureOpenAIChatModel>();
 builder.Services.Configure<HomeLocation>(builder.Configuration.GetSection(HomeLocation.Section));
-builder.Services.AddSingleton<HomeClock>();
+builder.Services.Configure<HouseholdOptions>(builder.Configuration.GetSection(HouseholdOptions.Section));
+builder.Services.AddSingleton<HouseholdResolver>();
 
 // Live Open-Meteo by default; WEATHER_SOURCE=recorded replays a saved forecast (tests and evals).
 if (string.Equals(builder.Configuration["WEATHER_SOURCE"], "recorded", StringComparison.OrdinalIgnoreCase))
@@ -54,6 +56,7 @@ app.UseRateLimiter();
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok" }));
 app.MapAuthEndpoints();
 app.MapChatEndpoints();
+app.MapSettingsEndpoints();
 
 app.Run();
 

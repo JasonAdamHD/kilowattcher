@@ -16,5 +16,5 @@ public static class TestWeather
         }
     }
 
-    public static RecordedWeatherSource Recorded(HomeClock clock) => new(clock, RecordedPath);
+    public static RecordedWeatherSource Recorded() => new(RecordedPath);
 }

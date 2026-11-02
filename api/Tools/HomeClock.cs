@@ -24,9 +24,14 @@ public sealed class HomeClock
     private readonly TimeProvider _time;
 
     public HomeClock(TimeProvider time, IOptions<HomeLocation> location)
+        : this(time, location.Value)
+    {
+    }
+
+    public HomeClock(TimeProvider time, HomeLocation location)
     {
         _time = time;
-        Location = location.Value;
+        Location = location;
         Zone = TimeZoneInfo.FindSystemTimeZoneById(Location.TimeZone);
     }
 
@@ -60,5 +65,5 @@ public sealed class HomeClock
 
     /// <summary>For tests: a clock at a fixed instant in a given zone.</summary>
     internal static HomeClock For(TimeProvider time, string timeZone = "America/Phoenix") =>
-        new(time, Options.Create(new HomeLocation { TimeZone = timeZone }));
+        new(time, new HomeLocation { TimeZone = timeZone });
 }

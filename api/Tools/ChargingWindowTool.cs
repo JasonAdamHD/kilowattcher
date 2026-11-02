@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Kilowattcher.Api.Households;
 using Kilowattcher.Api.Weather;
 
 namespace Kilowattcher.Api.Tools;
@@ -41,11 +42,8 @@ public sealed record ChargingRequest(DateOnly? NightOf = null, double? FromPerce
 /// hours (midnight to 6 AM) belong to the second one, which the model got wrong when it worked windows out
 /// itself. The model explains; this computes.
 /// </summary>
-public sealed class ChargingWindowTool(HomeClock clock, IWeatherSource weather) : ITool
+public sealed class ChargingWindowTool(IWeatherSource weather) : ITool
 {
-    /// <summary>From api/Data/docs/battery-manual.md, "Charging from the grid"; a test keeps them in step.</summary>
-    public const double RoundTripEfficiency = 0.9;
-
     public const int NightsAhead = 6;
     private const int SlotMinutes = 15;
 
@@ -81,9 +79,9 @@ public sealed class ChargingWindowTool(HomeClock clock, IWeatherSource weather) 
         }
         """;
 
-    public async Task<object> ExecuteAsync(JsonElement arguments, CancellationToken cancellationToken)
+    public async Task<object> ExecuteAsync(JsonElement arguments, ToolContext context, CancellationToken cancellationToken)
     {
-        var result = Execute(arguments);
+        var result = Execute(arguments, context);
         if (result is not ChargingPlan plan)
         {
             return result;
@@ -95,13 +93,13 @@ public sealed class ChargingWindowTool(HomeClock clock, IWeatherSource weather) 
 
         try
         {
-            var hours = await weather.GetDayAsync(nextDay, cancellationToken);
+            var hours = await weather.GetDayAsync(context.Clock, nextDay, cancellationToken);
             if (hours.Count == 0)
             {
                 return plan with { RecommendationReason = "No solar forecast is available for the next day yet." };
             }
 
-            var forecast = SolarForecastTool.Build(nextDay, hours, weather.Description);
+            var forecast = SolarForecastTool.Build(nextDay, hours, weather.Description, context.Household.SolarSystemKw);
             return Recommend(plan, new NextDaySolar(forecast.Date, nextDay.ToString("dddd", CultureInfo.InvariantCulture), forecast.Conditions, forecast.TotalKwh));
         }
         catch (WeatherUnavailableException)
@@ -126,19 +124,19 @@ public sealed class ChargingWindowTool(HomeClock clock, IWeatherSource weather) 
                 $"Charging {plan.CheapestWindow.Description} costs about ${plan.EstimatedCost} instead of ${plan.CostIfChargedAtPeak} at peak.",
         };
 
-    internal object Execute(JsonElement arguments)
+    internal static object Execute(JsonElement arguments, ToolContext context)
     {
         DateOnly? night = null;
         if (ToolArguments.GetString(arguments, "night_of") is { } text)
         {
-            night = ResolveNight(text, clock.Today);
+            night = ResolveNight(text, context.Clock.Today);
             if (night is null)
             {
                 return new ToolError("night_of must be \"tonight\", \"tomorrow\", a weekday name, a YYYY-MM-DD date, or null.");
             }
         }
 
-        return Plan(BatteryStatusTool.Status, clock, new ChargingRequest(night, Number(arguments, "from_percent"), Number(arguments, "target_percent")));
+        return Plan(context.Household, context.Clock, new ChargingRequest(night, Number(arguments, "from_percent"), Number(arguments, "target_percent")));
     }
 
     /// <summary>Turns "tonight", "tomorrow", "Tuesday", or "2026-11-03" into a date, so the model never does date math.</summary>
@@ -164,8 +162,11 @@ public sealed class ChargingWindowTool(HomeClock clock, IWeatherSource weather) 
         return DateOnly.TryParseExact(text.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date) ? date : null;
     }
 
-    internal static object Plan(BatteryStatus battery, HomeClock clock, ChargingRequest request)
+    internal static object Plan(Household household, HomeClock clock, ChargingRequest request)
     {
+        var battery = household.Status;
+        var efficiency = household.Battery.RoundTripEfficiency;
+        var periods = household.RatePeriods;
         var now = clock.Now;
         var target = (int)Math.Round(request.TargetPercent ?? 100);
         if (target is < 1 or > 100)
@@ -204,7 +205,7 @@ public sealed class ChargingWindowTool(HomeClock clock, IWeatherSource weather) 
         }
 
         var energyToAdd = battery.CapacityKwh * (target - start) / 100.0;
-        var gridEnergy = energyToAdd / RoundTripEfficiency;
+        var gridEnergy = energyToAdd / efficiency;
         var chargeMinutes = (int)Math.Ceiling(energyToAdd / battery.MaxChargeKw * 60);
         var slotsNeeded = (int)Math.Ceiling(chargeMinutes / (double)SlotMinutes);
 
@@ -226,7 +227,7 @@ public sealed class ChargingWindowTool(HomeClock clock, IWeatherSource weather) 
         var bestAverage = decimal.MaxValue;
         for (var i = 0; i + slotsNeeded <= slots.Count; i++)
         {
-            var average = slots.Skip(i).Take(slotsNeeded).Average(s => PeriodAt(s).PricePerKwh);
+            var average = slots.Skip(i).Take(slotsNeeded).Average(s => PeriodAt(s, periods).PricePerKwh);
             if (average < bestAverage)
             {
                 bestAverage = average;
@@ -236,7 +237,7 @@ public sealed class ChargingWindowTool(HomeClock clock, IWeatherSource weather) 
 
         var windowStart = slots[bestStart];
         var windowEnd = windowStart.AddMinutes(chargeMinutes);
-        var peakPrice = RateScheduleTool.Periods.Max(p => p.PricePerKwh);
+        var peakPrice = periods.Max(p => p.PricePerKwh);
 
         return new ChargingPlan(
             Local(searchFrom),
@@ -247,17 +248,17 @@ public sealed class ChargingWindowTool(HomeClock clock, IWeatherSource weather) 
             Math.Round(energyToAdd, 2),
             Math.Round(gridEnergy, 2),
             chargeMinutes,
-            new ChargingWindow(Local(windowStart), Local(windowEnd), Describe(clock.Today, windowStart, windowEnd), PeriodAt(windowStart).Name, bestAverage),
+            new ChargingWindow(Local(windowStart), Local(windowEnd), Describe(clock.Today, windowStart, windowEnd), PeriodAt(windowStart, periods).Name, bestAverage),
             Math.Round((decimal)gridEnergy * bestAverage, 2),
             Math.Round((decimal)gridEnergy * peakPrice, 2),
-            RoundTripEfficiency,
-            "Costs include charging losses (90% round-trip efficiency). Compare with the next day's solar forecast to decide whether grid charging is worth it.");
+            efficiency,
+            string.Create(CultureInfo.InvariantCulture, $"Costs include charging losses ({efficiency:P0} round-trip efficiency for the {household.Battery.Name})."));
     }
 
-    internal static RatePeriod PeriodAt(DateTimeOffset localTime)
+    internal static RatePeriod PeriodAt(DateTimeOffset localTime, IReadOnlyList<RatePeriod> periods)
     {
         var time = localTime.ToString("HH:mm", CultureInfo.InvariantCulture);
-        return RateScheduleTool.Periods.First(p => string.CompareOrdinal(time, p.Start) >= 0 && string.CompareOrdinal(time, p.End) < 0);
+        return periods.First(p => string.CompareOrdinal(time, p.Start) >= 0 && string.CompareOrdinal(time, p.End) < 0);
     }
 
     /// <summary>"tonight, midnight to 1:34 AM" or "Tuesday night, midnight to 1:34 AM", so the model doesn't work out dates.</summary>

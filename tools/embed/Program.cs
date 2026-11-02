@@ -1,10 +1,12 @@
-// Builds api/Data/embeddings.json from api/Data/docs/*.md.
+// Keeps api/Data/embeddings.json in step with api/Data/docs/*.md, incrementally.
 //
-//   dotnet run --project tools/embed            embed every chunk with the embedding deployment
-//   dotnet run --project tools/embed -- --check verify embeddings.json matches the docs (no Azure call)
+//   dotnet run --project tools/embed                embed only new and changed chunks, drop removed ones
+//   dotnet run --project tools/embed -- --plan      show what would change, without calling Azure
+//   dotnet run --project tools/embed -- --check     fail if anything would change (CI), without calling Azure
+//   dotnet run --project tools/embed -- --full      re-embed every chunk (e.g. after changing model or dimensions)
 //
-// Reads Azure settings from the API's user-secrets (or environment variables). Prints counts only,
-// never keys, endpoints, or document text.
+// Reads Azure settings from the API's user-secrets (or environment variables). Prints chunk IDs and
+// counts only, never keys, endpoints, or document text.
 
 using System.Text.Json;
 using Kilowattcher.Api;
@@ -19,9 +21,29 @@ var chunks = MarkdownChunker.ChunkDirectory(docsDir);
 var docCount = chunks.Select(c => c.Id.Split('#')[0]).Distinct().Count();
 Console.WriteLine($"Found {chunks.Count} chunks in {docCount} docs.");
 
+var stored = File.Exists(outputPath) ? DocIndex.ReadFile(outputPath) : null;
+var plan = EmbeddingPlan.Create(chunks, stored, EmbeddingSettings.Dimensions, full: args.Contains("--full"));
+Print(plan, stored is null);
+
 if (args.Contains("--check"))
 {
-    return Check(chunks, outputPath);
+    if (plan.IsUpToDate)
+    {
+        return 0;
+    }
+
+    Console.Error.WriteLine("Docs changed since the last embed. Run: dotnet run --project tools/embed");
+    return 1;
+}
+
+if (args.Contains("--plan"))
+{
+    return 0;
+}
+
+if (plan.IsUpToDate && !plan.FullRebuild)
+{
+    return 0;
 }
 
 var configuration = new ConfigurationBuilder()
@@ -36,58 +58,58 @@ if (settings is null)
     return 1;
 }
 
-IEmbeddingClient client = new AzureEmbeddingClient(settings);
-float[][] vectors;
-try
+IReadOnlyList<float[]> vectors = [];
+if (plan.ToEmbed.Count > 0)
 {
-    vectors = (await client.EmbedAsync(chunks.Select(c => c.EmbeddingInput).ToList(), CancellationToken.None)).ToArray();
-}
-catch (EmbeddingUnavailableException ex)
-{
-    Console.Error.WriteLine($"Embedding failed: {ex.Message}");
-    return 1;
-}
-
-var file = new EmbeddingFile(
-    settings.Deployment,
-    EmbeddingSettings.Dimensions,
-    chunks.Select((c, i) => new EmbeddedChunk(c.Id, c.Title, c.Heading, c.Text, c.ContentHash, vectors[i])).ToList());
-
-await File.WriteAllTextAsync(outputPath, JsonSerializer.Serialize(file, DocIndex.Json) + "\n");
-Console.WriteLine($"Wrote {file.Chunks.Count} vectors ({file.Dimensions} dimensions) to api/Data/{DocIndex.FileName}.");
-return 0;
-
-static int Check(IReadOnlyList<DocChunk> chunks, string path)
-{
-    if (!File.Exists(path))
+    try
     {
-        Console.Error.WriteLine($"api/Data/{DocIndex.FileName} is missing. Run: dotnet run --project tools/embed");
+        IEmbeddingClient client = new AzureEmbeddingClient(settings);
+        vectors = await client.EmbedAsync(plan.ToEmbed.Select(c => c.EmbeddingInput).ToList(), CancellationToken.None);
+    }
+    catch (EmbeddingUnavailableException ex)
+    {
+        Console.Error.WriteLine($"Embedding failed: {ex.Message}");
         return 1;
     }
+}
 
-    var stored = DocIndex.ReadFile(path).Chunks.ToDictionary(c => c.Id, c => c.ContentHash);
-    var current = chunks.ToDictionary(c => c.Id, c => c.ContentHash);
+var file = plan.Apply(stored, chunks, vectors, settings.Deployment, EmbeddingSettings.Dimensions);
+await File.WriteAllTextAsync(outputPath, JsonSerializer.Serialize(file, DocIndex.Json) + "\n");
+Console.WriteLine($"Embedded {plan.ToEmbed.Count} chunk(s) in one request, kept {plan.Unchanged.Count}, dropped {plan.Removed.Count}. " +
+    $"Wrote {file.Chunks.Count} vectors to api/Data/{DocIndex.FileName}.");
+return 0;
 
-    var added = current.Keys.Except(stored.Keys).ToList();
-    var removed = stored.Keys.Except(current.Keys).ToList();
-    var changed = current.Keys.Intersect(stored.Keys).Where(id => current[id] != stored[id]).ToList();
-
-    if (added.Count + removed.Count + changed.Count == 0)
+static void Print(EmbeddingPlan plan, bool noFile)
+{
+    if (noFile)
     {
-        Console.WriteLine($"api/Data/{DocIndex.FileName} is up to date.");
-        return 0;
+        Console.WriteLine($"No api/Data/{DocIndex.FileName} yet: all chunks are new.");
+    }
+    else if (plan.FullRebuild)
+    {
+        Console.WriteLine("Full rebuild: every chunk will be embedded again.");
     }
 
-    foreach (var (label, ids) in new[] { ("new", added), ("removed", removed), ("changed", changed) })
+    Console.WriteLine($"  unchanged: {plan.Unchanged.Count} (stored vectors reused)");
+    foreach (var (label, ids) in new[]
     {
-        foreach (var id in ids)
+        ("changed", plan.Changed.Select(c => c.Id)),
+        ("added", plan.Added.Select(c => c.Id)),
+        ("removed", plan.Removed),
+    })
+    {
+        var list = ids.ToList();
+        Console.WriteLine($"  {label}: {list.Count}");
+        foreach (var id in list)
         {
-            Console.Error.WriteLine($"  {label}: {id}");
+            Console.WriteLine($"    {id}");
         }
     }
 
-    Console.Error.WriteLine("Docs changed since the last embed. Run: dotnet run --project tools/embed");
-    return 1;
+    if (plan.IsUpToDate && !plan.FullRebuild)
+    {
+        Console.WriteLine($"api/Data/{DocIndex.FileName} is up to date.");
+    }
 }
 
 static string FindRepoRoot()

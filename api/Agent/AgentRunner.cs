@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Kilowattcher.Api.Households;
 using Kilowattcher.Api.Safety;
 using Kilowattcher.Api.Tools;
 
@@ -23,7 +24,7 @@ public sealed record AgentResult(
 /// The agent loop: system prompt → model → run requested tools → feed results back → repeat,
 /// with a hard limit of 5 tool rounds. Then the reply is validated as JSON, with one retry.
 /// </summary>
-public sealed class AgentRunner(IChatModel model, ToolRegistry tools, HomeClock clock, IAnswerJudge judge, ILogger<AgentRunner> logger)
+public sealed class AgentRunner(IChatModel model, ToolRegistry tools, IAnswerJudge judge, ILogger<AgentRunner> logger)
 {
     public const int MaxToolRounds = 5;
     public const string RoundLimitNote = "I may have missed something; try a narrower question.";
@@ -44,7 +45,8 @@ public sealed class AgentRunner(IChatModel model, ToolRegistry tools, HomeClock 
     // Whole-request budget across every model call (each call is also capped at 30 seconds).
     public static readonly TimeSpan TotalBudget = TimeSpan.FromSeconds(60);
 
-    public async Task<AgentResult> RunAsync(IReadOnlyList<AgentItem> conversation, CancellationToken cancellationToken)
+    /// <param name="context">This request's household and local clock, passed to the prompt and every tool.</param>
+    public async Task<AgentResult> RunAsync(IReadOnlyList<AgentItem> conversation, ToolContext context, CancellationToken cancellationToken)
     {
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         budget.CancelAfter(TotalBudget);
@@ -55,7 +57,7 @@ public sealed class AgentRunner(IChatModel model, ToolRegistry tools, HomeClock 
         var records = new List<ToolCallRecord>();
         var citable = new Dictionary<string, Citation>(StringComparer.Ordinal);
         var definitions = tools.All.Select(t => new ToolDefinition(t.Name, t.Description, t.ParametersSchema)).ToList();
-        var instructions = SystemPrompt.Build(clock);
+        var instructions = SystemPrompt.Build(context);
         var usage = (Input: 0, Output: 0);
         var rounds = 0;
         var limitReached = false;
@@ -91,7 +93,7 @@ public sealed class AgentRunner(IChatModel model, ToolRegistry tools, HomeClock 
                 rounds++;
                 foreach (var call in step.ToolCalls)
                 {
-                    var record = await RunToolAsync(call, citable, budget.Token);
+                    var record = await RunToolAsync(call, context, citable, budget.Token);
                     records.Add(record);
                     items.Add(call);
                     items.Add(new ToolOutputItem(call.CallId, record.Result.GetRawText()));
@@ -173,7 +175,7 @@ public sealed class AgentRunner(IChatModel model, ToolRegistry tools, HomeClock 
         _ => reply with { SuggestedQuestion = null },
     };
 
-    private async Task<ToolCallRecord> RunToolAsync(ToolCallItem call, Dictionary<string, Citation> citable, CancellationToken cancellationToken)
+    private async Task<ToolCallRecord> RunToolAsync(ToolCallItem call, ToolContext context, Dictionary<string, Citation> citable, CancellationToken cancellationToken)
     {
         var arguments = ParseArguments(call.ArgumentsJson);
         object result;
@@ -190,7 +192,7 @@ public sealed class AgentRunner(IChatModel model, ToolRegistry tools, HomeClock 
         {
             try
             {
-                result = await tool.ExecuteAsync(arguments.Value, cancellationToken);
+                result = await tool.ExecuteAsync(arguments.Value, context, cancellationToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
