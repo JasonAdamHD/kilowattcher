@@ -10,9 +10,22 @@
     "expect": {
       "topic": ["home_energy"],
       // The window across midnight is computed in code (find_cheapest_charging_window).
-      "toolsRequired": ["get_battery_status", "get_solar_forecast", "find_cheapest_charging_window"],
+      // The window, the next day's solar, and the recommendation all come from find_cheapest_charging_window.
+      "toolsRequired": ["find_cheapest_charging_window"],
       // The cheapest price, the cheapest period's name, or the tool's estimated cost all show the right window.
       "mustContain": [["midnight", "12 AM", "12 a.m.", "12:00"], ["0.11", "11 cents", "super off-peak", "0.96", "96 cents"]]
+    }
+  },
+  {
+    "id": "tools-future-night-third-full",
+    "category": "Tool selection",
+    // "The night after tomorrow" instead of a weekday, so the case means the same night whenever evals run.
+    // In the replayed forecast the following day is sunny (~36 kWh), so the right answer is "no need".
+    "turns": ["If my battery is only 1/3 full, should I charge it from the grid the night after tomorrow?"],
+    "expect": {
+      "topic": ["home_energy"],
+      "toolsRequired": ["find_cheapest_charging_window"],
+      "mustContain": [["sun"], ["no need", "not need", "don't need", "isn't needed", "not needed", "isn't necessary", "not necessary", "unnecessary", "no reason"]]
     }
   },
   {
@@ -42,8 +55,8 @@
     "expect": {
       "topic": ["home_energy"],
       "toolsRequired": ["get_solar_forecast"],
-      // Tomorrow is the cloudy day: ~10.3 kWh. The number is what matters; "cloud" is a bonus.
-      "mustContain": [["10.3", "10.4", "about 10 kWh", "cloud"]]
+      // Evals replay a recorded Open-Meteo forecast whose "tomorrow" is 95% cloudy: about 8 kWh.
+      "mustContain": [["8.0", "8 kWh", "7.9", "8.1", "cloud"]]
     }
   },
   {

@@ -49,6 +49,6 @@ public sealed class RateScheduleTool(HomeClock clock) : ITool
             return new ToolError("Rates are available within 30 days of today.");
         }
 
-        return new RateSchedule(Utility, Plan, date.ToString("yyyy-MM-dd"), HomeClock.TimeZoneLabel, "USD", Periods);
+        return new RateSchedule(Utility, Plan, date.ToString("yyyy-MM-dd"), clock.Label, "USD", Periods);
     }
 }

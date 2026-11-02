@@ -9,7 +9,7 @@ namespace Kilowattcher.Api.Tests.Tools;
 public class ToolTests
 {
     // 2026-11-01 20:00 UTC is 13:00 on Sunday 2026-11-01 in Phoenix.
-    private static readonly HomeClock Clock = new(new MutableTimeProvider(new DateTimeOffset(2026, 11, 1, 20, 0, 0, TimeSpan.Zero)));
+    private static readonly HomeClock Clock = HomeClock.For(new MutableTimeProvider(new DateTimeOffset(2026, 11, 1, 20, 0, 0, TimeSpan.Zero)));
 
     private static JsonElement Args(object value) => JsonSerializer.SerializeToElement(value);
 
@@ -20,8 +20,20 @@ public class ToolTests
         Assert.Equal(13, Clock.Now.Hour);
 
         // 03:00 UTC on Nov 2 is still the evening of Nov 1 in Phoenix; in July it's the same offset.
-        Assert.Equal(new DateOnly(2026, 11, 1), new HomeClock(new MutableTimeProvider(new DateTimeOffset(2026, 11, 2, 3, 0, 0, TimeSpan.Zero))).Today);
-        Assert.Equal(TimeSpan.FromHours(-7), new HomeClock(new MutableTimeProvider(new DateTimeOffset(2026, 7, 1, 12, 0, 0, TimeSpan.Zero))).Now.Offset);
+        Assert.Equal(new DateOnly(2026, 11, 1), HomeClock.For(new MutableTimeProvider(new DateTimeOffset(2026, 11, 2, 3, 0, 0, TimeSpan.Zero))).Today);
+        Assert.Equal(TimeSpan.FromHours(-7), HomeClock.For(new MutableTimeProvider(new DateTimeOffset(2026, 7, 1, 12, 0, 0, TimeSpan.Zero))).Now.Offset);
+    }
+
+    [Fact]
+    public void Home_clock_follows_daylight_saving_in_zones_that_use_it()
+    {
+        var summer = HomeClock.For(new MutableTimeProvider(new DateTimeOffset(2026, 7, 1, 16, 0, 0, TimeSpan.Zero)), "America/New_York");
+        var winter = HomeClock.For(new MutableTimeProvider(new DateTimeOffset(2026, 12, 1, 17, 0, 0, TimeSpan.Zero)), "America/New_York");
+
+        Assert.Equal(TimeSpan.FromHours(-4), summer.Now.Offset);
+        Assert.Equal(TimeSpan.FromHours(-5), winter.Now.Offset);
+        Assert.Equal(12, summer.Now.Hour);
+        Assert.Contains("UTC-4", summer.Label);
     }
 
     [Fact]
@@ -65,37 +77,89 @@ public class ToolTests
         Assert.IsType<ToolError>(new RateScheduleTool(Clock).Execute(Args(new { date })));
     }
 
+    private static SolarForecastTool Solar() => new(Clock, TestWeather.Recorded(Clock));
+
     [Fact]
-    public void Solar_is_sunny_today_and_cloudy_tomorrow()
+    public async Task Solar_replays_the_recorded_forecast_with_a_cloudy_tomorrow()
     {
-        var tool = new SolarForecastTool(Clock);
+        // Clock: Sunday 2026-11-01 in Phoenix. The recording's first day (95% cloud) is served as tomorrow.
+        var tomorrow = Assert.IsType<SolarForecast>(await Solar().ExecuteAsync(Args(new { date = "2026-11-02" }), CancellationToken.None));
+        var dayAfter = Assert.IsType<SolarForecast>(await Solar().ExecuteAsync(Args(new { date = "2026-11-03" }), CancellationToken.None));
 
-        var today = Assert.IsType<SolarForecast>(tool.Execute(Args(new { date = "2026-11-01" })));
-        var tomorrow = Assert.IsType<SolarForecast>(tool.Execute(Args(new { date = "2026-11-02" })));
-        var dayAfter = Assert.IsType<SolarForecast>(tool.Execute(Args(new { date = "2026-11-03" })));
-
-        Assert.Equal("sunny", today.Conditions);
-        Assert.Equal(34.8, today.TotalKwh);
         Assert.Equal("cloudy", tomorrow.Conditions);
-        Assert.InRange(tomorrow.TotalKwh, 9.5, 11.0);
-        Assert.Equal(1.5, tomorrow.Hourly.Single(h => h.Hour == "12:00").Kwh);
+        Assert.InRange(tomorrow.TotalKwh, 7.0, 9.0);   // 1.40 kWh/m² × 7.2 kW × 0.8 ≈ 8.0
         Assert.Equal("sunny", dayAfter.Conditions);
-        Assert.Equal(13, today.Hourly.Count);
+        Assert.InRange(dayAfter.TotalKwh, 33.0, 36.0); // a clear November day, ≈ 34.4
+        Assert.Contains("Open-Meteo.com", tomorrow.Source);
+        Assert.All(tomorrow.Hourly, h => Assert.True(h.Kwh > 0));
+    }
+
+    [Fact]
+    public async Task Solar_for_today_is_not_in_the_replay()
+    {
+        // The replay starts tomorrow, so today has no recorded hours; live Open-Meteo covers today.
+        Assert.IsType<ToolError>(await Solar().ExecuteAsync(Args(new { date = "2026-11-01" }), CancellationToken.None));
+    }
+
+    [Fact]
+    public void Solar_math_is_system_size_times_irradiance_times_losses()
+    {
+        var day = new DateOnly(2026, 11, 2);
+        IReadOnlyList<Kilowattcher.Api.Weather.WeatherHour> hours =
+        [
+            new(day.ToDateTime(new TimeOnly(11, 0)), 1000, 10, 25), // full sun: 7.2 × 1.0 × 0.8 = 5.76 kWh
+            new(day.ToDateTime(new TimeOnly(12, 0)), 500, 10, 25),  // half sun: 2.88 kWh
+            new(day.ToDateTime(new TimeOnly(22, 0)), 0, 10, 15),    // night: dropped from the hourly list
+        ];
+
+        var forecast = SolarForecastTool.Build(day, hours, "test");
+
+        Assert.Equal([5.8, 2.9], forecast.Hourly.Select(h => h.Kwh));
+        Assert.Equal(8.6, forecast.TotalKwh);
+        Assert.Equal("sunny", forecast.Conditions);
+    }
+
+    [Theory]
+    [InlineData(10, "sunny")]
+    [InlineData(50, "partly cloudy")]
+    [InlineData(90, "cloudy")]
+    public void Conditions_follow_daytime_cloud_cover(double cloud, string expected)
+    {
+        var day = new DateOnly(2026, 11, 2);
+        var hours = Enumerable.Range(8, 9).Select(h => new Kilowattcher.Api.Weather.WeatherHour(day.ToDateTime(new TimeOnly(h, 0)), 400, cloud, 20)).ToList();
+
+        Assert.Equal(expected, SolarForecastTool.Build(day, hours, "test").Conditions);
     }
 
     [Theory]
     [InlineData("2026-10-31")] // yesterday
     [InlineData("2026-11-08")] // 7 days ahead
     [InlineData("not-a-date")]
-    public void Solar_rejects_dates_outside_the_forecast_window(string date)
+    public async Task Solar_rejects_dates_outside_the_forecast_window(string date)
     {
-        Assert.IsType<ToolError>(new SolarForecastTool(Clock).Execute(Args(new { date })));
+        Assert.IsType<ToolError>(await Solar().ExecuteAsync(Args(new { date }), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Weather_outages_become_a_note_not_a_crash()
+    {
+        var tool = new SolarForecastTool(Clock, new FailingWeather());
+
+        var error = Assert.IsType<ToolError>(await tool.ExecuteAsync(Args(new { date = "2026-11-02" }), CancellationToken.None));
+        Assert.Contains("unavailable", error.Error);
+    }
+
+    private sealed class FailingWeather : Kilowattcher.Api.Weather.IWeatherSource
+    {
+        public string Description => "down";
+        public Task<IReadOnlyList<Kilowattcher.Api.Weather.WeatherHour>> GetDayAsync(DateOnly date, CancellationToken cancellationToken) =>
+            throw new Kilowattcher.Api.Weather.WeatherUnavailableException("down");
     }
 
     [Fact]
     public void Every_tool_schema_is_valid_strict_json_schema()
     {
-        ITool[] tools = [new BatteryStatusTool(), new RateScheduleTool(Clock), new SolarForecastTool(Clock),
+        ITool[] tools = [new BatteryStatusTool(), new RateScheduleTool(Clock), Solar(), new ChargingWindowTool(Clock, TestWeather.Recorded(Clock)), new BackupEstimateTool(),
             new SearchDocsTool(TestIndex.Provider(DocIndex.Empty), new FakeEmbeddingClient(), NullLogger<SearchDocsTool>.Instance)];
 
         foreach (var tool in tools)

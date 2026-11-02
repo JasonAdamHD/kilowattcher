@@ -1,47 +1,43 @@
+using System.Globalization;
 using System.Text.Json;
+using Kilowattcher.Api.Weather;
 
 namespace Kilowattcher.Api.Tools;
 
-public sealed record SolarHour(string Hour, double Kwh);
+public sealed record SolarHour(string Hour, double Kwh, int CloudCoverPercent);
 
 public sealed record SolarForecast(
     string Date,
     double SystemSizeKw,
     string Conditions,
+    int DaytimeCloudCoverPercent,
     IReadOnlyList<SolarHour> Hourly,
-    double TotalKwh);
+    double TotalKwh,
+    string Source);
 
 /// <summary>
-/// Mock forecast for a 7.2 kW rooftop system. Every day is sunny except tomorrow, which is cloudy
-/// (30% of a sunny day), so "should I charge from the grid tonight?" has a real answer to find.
-/// "Tomorrow" is relative to the home's local date, so evals behave the same on any day.
+/// Expected rooftop solar production for a date, from real weather: Open-Meteo's hourly sunlight on a
+/// tilted panel (W/m²) turned into kWh in code. Each hour: system size (kW) × irradiance ÷ 1000 × 0.8,
+/// where 0.8 covers inverter, wiring, heat, and dust losses. A clear Phoenix November day gives about
+/// 34–37 kWh, matching solar-basics.md.
 /// </summary>
-public sealed class SolarForecastTool(HomeClock clock) : ITool
+public sealed class SolarForecastTool(HomeClock clock, IWeatherSource weather) : ITool
 {
     public const double SystemSizeKw = 7.2;
-    public const double CloudyFactor = 0.3;
+    public const double PerformanceRatio = 0.8;
     public const int DaysAhead = 6;
 
-    public static readonly IReadOnlyList<SolarHour> SunnyDay =
-    [
-        new("06:00", 0.1), new("07:00", 0.6), new("08:00", 1.5), new("09:00", 2.7),
-        new("10:00", 3.8), new("11:00", 4.6), new("12:00", 5.0), new("13:00", 4.9),
-        new("14:00", 4.4), new("15:00", 3.5), new("16:00", 2.3), new("17:00", 1.1),
-        new("18:00", 0.3),
-    ];
+    public const string Attribution = "Weather data by Open-Meteo.com (CC BY 4.0)";
 
     public string Name => "get_solar_forecast";
 
     public string Description =>
-        "Hourly rooftop solar production estimate in kWh for a local date (today up to 6 days ahead), " +
-        "with the day's conditions and total. Hours are the start of each hour on a 24-hour clock.";
+        "Expected rooftop solar production in kWh for a local date (today up to 6 days ahead), hour by hour, from the " +
+        "real weather forecast for the home's location, with the day's cloud cover and conditions.";
 
     public string ParametersSchema => ToolArguments.DateOnlySchema;
 
-    public Task<object> ExecuteAsync(JsonElement arguments, CancellationToken cancellationToken) =>
-        Task.FromResult(Execute(arguments));
-
-    internal object Execute(JsonElement arguments)
+    public async Task<object> ExecuteAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
         if (!ToolArguments.TryGetDate(arguments, out var date))
         {
@@ -54,16 +50,51 @@ public sealed class SolarForecastTool(HomeClock clock) : ITool
             return new ToolError($"Forecasts cover today through {DaysAhead} days ahead ({today:yyyy-MM-dd} to {today.AddDays(DaysAhead):yyyy-MM-dd}).");
         }
 
-        var cloudy = date == today.AddDays(1);
-        var hourly = cloudy
-            ? SunnyDay.Select(h => h with { Kwh = Math.Round(h.Kwh * CloudyFactor, 1) }).ToList()
-            : SunnyDay.ToList();
+        IReadOnlyList<WeatherHour> hours;
+        try
+        {
+            hours = await weather.GetDayAsync(date, cancellationToken);
+        }
+        catch (WeatherUnavailableException)
+        {
+            return new ToolError("The weather forecast is unavailable right now. Say you couldn't check the solar forecast.");
+        }
+
+        if (hours.Count == 0)
+        {
+            return new ToolError($"No forecast is available for {date:yyyy-MM-dd} yet.");
+        }
+
+        return Build(date, hours, weather.Description);
+    }
+
+    internal static SolarForecast Build(DateOnly date, IReadOnlyList<WeatherHour> hours, string source)
+    {
+        var hourly = hours
+            .Select(h => new SolarHour(
+                h.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture),
+                Math.Round(SystemSizeKw * h.TiltedIrradiance / 1000 * PerformanceRatio, 1),
+                (int)Math.Round(h.CloudCover)))
+            .Where(h => h.Kwh > 0)
+            .ToList();
+
+        // Cloud cover while the sun is meaningfully up (8 AM to 4 PM) decides how the day is described.
+        var daytime = hours.Where(h => h.LocalTime.Hour is >= 8 and <= 16).ToList();
+        var cloud = daytime.Count == 0 ? 0 : (int)Math.Round(daytime.Average(h => h.CloudCover));
+        var conditions = cloud switch
+        {
+            < 30 => "sunny",
+            < 70 => "partly cloudy",
+            _ => "cloudy",
+        };
 
         return new SolarForecast(
-            date.ToString("yyyy-MM-dd"),
+            date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             SystemSizeKw,
-            cloudy ? "cloudy" : "sunny",
+            conditions,
+            cloud,
             hourly,
-            Math.Round(hourly.Sum(h => h.Kwh), 1));
+            Math.Round(hours.Sum(h => SystemSizeKw * h.TiltedIrradiance / 1000 * PerformanceRatio), 1),
+            $"{source}. {Attribution}.");
     }
 }

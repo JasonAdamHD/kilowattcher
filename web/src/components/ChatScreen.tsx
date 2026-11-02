@@ -169,6 +169,13 @@ export function ChatScreen({ messages, setMessages, pendingQuestion, onPendingQu
 
       <footer className="chat__footer">
         <Composer value={draft} onChange={setDraft} onSend={sendDraft} busy={busy} />
+        <p className="attribution">
+          Solar forecasts use weather data by{' '}
+          <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">
+            Open-Meteo.com
+          </a>{' '}
+          (CC BY 4.0)
+        </p>
       </footer>
 
       {citation && <CitationOverlay citation={citation} onClose={closeCitation} />}
