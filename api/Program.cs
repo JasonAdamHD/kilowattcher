@@ -4,6 +4,7 @@ using Kilowattcher.Api.Auth;
 using Kilowattcher.Api.Rag;
 using Kilowattcher.Api.Safety;
 using Kilowattcher.Api.Tools;
+using Kilowattcher.Api.Weather;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,7 +19,19 @@ builder.Services.AddSingleton<InviteCodeVerifier>();
 builder.Services.AddSingleton<SessionTokenService>();
 builder.Services.AddSingleton<HistorySigner>();
 builder.Services.AddSingleton<IChatModel, AzureOpenAIChatModel>();
+builder.Services.Configure<HomeLocation>(builder.Configuration.GetSection(HomeLocation.Section));
 builder.Services.AddSingleton<HomeClock>();
+
+// Live Open-Meteo by default; WEATHER_SOURCE=recorded replays a saved forecast (tests and evals).
+if (string.Equals(builder.Configuration["WEATHER_SOURCE"], "recorded", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddSingleton<IWeatherSource, RecordedWeatherSource>();
+}
+else
+{
+    builder.Services.AddHttpClient<OpenMeteoWeatherSource>(client => client.Timeout = TimeSpan.FromSeconds(10));
+    builder.Services.AddSingleton<IWeatherSource>(sp => sp.GetRequiredService<OpenMeteoWeatherSource>());
+}
 builder.Services.AddSingleton<ITool, BatteryStatusTool>();
 builder.Services.AddSingleton<ITool, BackupEstimateTool>();
 builder.Services.AddSingleton<ITool, RateScheduleTool>();

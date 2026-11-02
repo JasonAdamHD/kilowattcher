@@ -11,7 +11,8 @@ RUN dotnet publish Kilowattcher.Api.csproj -c Release -o /app --no-restore
 
 # Stage 2: run on the chiseled ASP.NET runtime: no shell, no package manager,
 # and a non-root user by default. Secrets are passed at runtime, never baked in.
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled AS runtime
+# "-extra" adds time-zone and globalization data, needed for a configurable home city.
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled-extra AS runtime
 WORKDIR /app
 COPY --from=build /app ./
 

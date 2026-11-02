@@ -499,6 +499,17 @@ p:last-child {
   justify-content: space-between;
 }
 
+.attribution {
+  max-width: var(--max-width);
+  margin: 4px auto 0;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.attribution a {
+  color: inherit;
+}
+
 .counter--over {
   color: var(--color-alert-red);
   font-weight: 600;

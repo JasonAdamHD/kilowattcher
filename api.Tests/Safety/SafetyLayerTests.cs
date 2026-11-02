@@ -14,7 +14,7 @@ namespace Kilowattcher.Api.Tests.Safety;
 /// <summary>Layer 4 (answer judge) inside the agent loop.</summary>
 public class AnswerJudgeTests
 {
-    private static readonly HomeClock Clock = new(new MutableTimeProvider(new DateTimeOffset(2026, 11, 1, 20, 0, 0, TimeSpan.Zero)));
+    private static readonly HomeClock Clock = HomeClock.For(new MutableTimeProvider(new DateTimeOffset(2026, 11, 1, 20, 0, 0, TimeSpan.Zero)));
 
     private readonly FakeChatModel _model = new();
     private readonly FakeAnswerJudge _judge = new();

@@ -13,7 +13,7 @@ namespace Kilowattcher.Api.Tests.Agent;
 /// </summary>
 public class GuardrailTests
 {
-    private static readonly HomeClock Clock = new(new MutableTimeProvider(new DateTimeOffset(2026, 11, 1, 20, 0, 0, TimeSpan.Zero)));
+    private static readonly HomeClock Clock = HomeClock.For(new MutableTimeProvider(new DateTimeOffset(2026, 11, 1, 20, 0, 0, TimeSpan.Zero)));
 
     private readonly FakeChatModel _model = new();
 

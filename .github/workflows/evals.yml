@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
     inputs:
       min:
-        description: Minimum passing cases (out of 24)
-        default: "22"
+        description: Minimum passing cases (out of 25)
+        default: "23"
         required: true
 
 permissions:
@@ -25,6 +25,8 @@ jobs:
       AZURE_OPENAI_EMBEDDING_DEPLOYMENT: ${{ vars.AZURE_OPENAI_EMBEDDING_DEPLOYMENT }}
       AZURE_OPENAI_JUDGE_DEPLOYMENT: ${{ vars.AZURE_OPENAI_JUDGE_DEPLOYMENT }}
       AZURE_CONTENT_SAFETY_ENDPOINT: ${{ vars.AZURE_CONTENT_SAFETY_ENDPOINT }}
+      # Replay the recorded Open-Meteo forecast so scores are comparable run to run.
+      WEATHER_SOURCE: recorded
     steps:
       - uses: actions/checkout@v5
 

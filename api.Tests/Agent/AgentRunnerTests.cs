@@ -9,14 +9,14 @@ namespace Kilowattcher.Api.Tests.Agent;
 
 public class AgentRunnerTests
 {
-    private static readonly HomeClock Clock = new(new MutableTimeProvider(new DateTimeOffset(2026, 11, 1, 20, 0, 0, TimeSpan.Zero)));
+    private static readonly HomeClock Clock = HomeClock.For(new MutableTimeProvider(new DateTimeOffset(2026, 11, 1, 20, 0, 0, TimeSpan.Zero)));
 
     private readonly FakeChatModel _model = new();
 
     /// <summary>The real tools, with any extra tool added or replacing the one with the same name.</summary>
     private AgentRunner CreateRunner(params ITool[] extraTools)
     {
-        ITool[] defaults = [new BatteryStatusTool(), new RateScheduleTool(Clock), new SolarForecastTool(Clock), Search(TestIndex.ThreeAxes())];
+        ITool[] defaults = [new BatteryStatusTool(), new RateScheduleTool(Clock), new SolarForecastTool(Clock, TestWeather.Recorded(Clock)), Search(TestIndex.ThreeAxes())];
         var tools = defaults.Where(d => extraTools.All(e => e.Name != d.Name)).Concat(extraTools);
         return new AgentRunner(_model, new ToolRegistry(tools), Clock, new FakeAnswerJudge(), NullLogger<AgentRunner>.Instance);
     }
