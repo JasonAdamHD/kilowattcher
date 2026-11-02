@@ -28,6 +28,31 @@ export type HistoryMessage =
   | { role: 'user'; content: string }
   | { role: 'assistant'; content: string; signature: string }
 
+/** What the settings panel can change. Fields left out keep the household defaults. */
+export type HouseholdSettings = {
+  battery?: string
+  stateOfChargePercent?: number
+  city?: string
+  superOffPeakPrice?: number
+  offPeakPrice?: number
+  peakPrice?: number
+}
+
+export type SettingsOptions = {
+  batteries: { id: string; name: string; capacityKwh: number; maxChargeKw: number; roundTripEfficiency: number }[]
+  cities: { id: string; city: string }[]
+  defaults: {
+    battery: string
+    stateOfChargePercent: number
+    city: string | null
+    cityName: string
+    superOffPeakPrice: number
+    offPeakPrice: number
+    peakPrice: number
+  }
+  maxPrice: number
+}
+
 export type ApiFailure =
   | { kind: 'unauthorized' }
   | { kind: 'invalid_code' }
@@ -112,10 +137,12 @@ export const api = {
       DEFAULT_TIMEOUT_MS,
     ),
 
-  chat: (message: string, history: HistoryMessage[]) =>
+  settingsOptions: () => request<SettingsOptions>('/api/settings/options', { method: 'GET' }, DEFAULT_TIMEOUT_MS),
+
+  chat: (message: string, history: HistoryMessage[], settings?: HouseholdSettings) =>
     request<ChatReply>(
       '/api/chat',
-      { method: 'POST', body: JSON.stringify({ message, history: history.slice(-MAX_HISTORY) }) },
+      { method: 'POST', body: JSON.stringify({ message, history: history.slice(-MAX_HISTORY), settings }) },
       CHAT_TIMEOUT_MS,
     ),
 }
