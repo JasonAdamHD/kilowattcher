@@ -34,7 +34,8 @@ public sealed record HouseholdSettings(
     decimal? SuperOffPeakPrice = null,
     decimal? OffPeakPrice = null,
     decimal? PeakPrice = null,
-    SignedPlace? Location = null);
+    SignedPlace? Location = null,
+    double? LoadKw = null);
 
 /// <summary>Everything the tools know about one household, for one request.</summary>
 public sealed record Household(
@@ -62,6 +63,9 @@ public sealed record Household(
     public string Summary =>
         FormattableString.Invariant(
             $"{Battery.Name} battery ({Battery.CapacityKwh} kWh, backup floor {Battery.BackupFloorPercent}%) at {StateOfChargePercent}%, ") +
+        (CurrentLoadKw > 0
+            ? FormattableString.Invariant($"powering the home at {CurrentLoadKw} kW, ")
+            : "idle (not powering the home), ") +
         FormattableString.Invariant(
             $"{SolarSystemKw} kW of solar, in {Location.City}; prices ${RatePeriods.Min(p => p.PricePerKwh)} to ${RatePeriods.Max(p => p.PricePerKwh)} per kWh") +
         (Customized ? " (the visitor changed some of these in settings)." : ".");
@@ -101,6 +105,14 @@ public sealed class HouseholdResolver(IOptions<HouseholdOptions> options, IOptio
             return null;
         }
 
+        // The home's draw on the battery: 0 (idle) up to the most this model can discharge.
+        var load = settings?.LoadKw ?? defaults.CurrentLoadKw;
+        if (double.IsNaN(load) || load < 0 || load > battery.MaxDischargeKw)
+        {
+            error = "invalid_load";
+            return null;
+        }
+
         var home = location.Value;
         if (settings?.Location is { } signed)
         {
@@ -137,7 +149,7 @@ public sealed class HouseholdResolver(IOptions<HouseholdOptions> options, IOptio
 
         var customized = settings is not null && settings != new HouseholdSettings();
         return new Household(
-            battery, charge, defaults.CurrentLoadKw, defaults.SolarSystemKw,
+            battery, charge, Math.Round(load, 2), defaults.SolarSystemKw,
             Household.Periods(Math.Round(prices[0], 2), Math.Round(prices[1], 2), Math.Round(prices[2], 2)),
             home, customized);
     }

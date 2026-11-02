@@ -64,6 +64,42 @@ public class HouseholdResolverTests
         Assert.Null(home);
         Assert.Equal(expected, error);
     }
+
+    [Fact]
+    public void Load_sets_the_drain_and_reaches_the_tools()
+    {
+        var home = TestHouseholds.With(new HouseholdSettings(LoadKw: 2.5));
+
+        Assert.Equal(2.5, home.CurrentLoadKw);
+        Assert.Equal("discharging", home.Status.Mode);
+        Assert.Contains("powering the home at 2.5 kW", home.Summary);
+        // (42% - 5%) x 13.5 kWh / 2.5 kW = 2.0 hours
+        Assert.Equal(2.0, Assert.IsType<BackupEstimate>(BackupEstimateTool.Estimate(home, null)).EstimatedHours);
+    }
+
+    [Fact]
+    public void Zero_load_means_idle()
+    {
+        var home = TestHouseholds.With(new HouseholdSettings(LoadKw: 0));
+
+        Assert.Equal("idle", home.Status.Mode);
+        Assert.Contains("idle (not powering the home)", home.Summary);
+        Assert.IsType<ToolError>(BackupEstimateTool.Estimate(home, null));
+    }
+
+    [Theory]
+    [InlineData(null, 5.0, true)]                  // VoltNest 13 maxes out at 5 kW
+    [InlineData(null, 5.1, false)]
+    [InlineData("helio-powercell-10", 3.8, true)]  // Helio maxes out at 3.8 kW
+    [InlineData("helio-powercell-10", 4.0, false)]
+    [InlineData(null, -0.1, false)]
+    public void Load_is_capped_at_the_batterys_max_discharge(string? battery, double load, bool ok)
+    {
+        var home = TestHouseholds.Resolver.Resolve(new HouseholdSettings(Battery: battery, LoadKw: load), out var error);
+
+        Assert.Equal(ok, home is not null);
+        Assert.Equal(ok ? null : "invalid_load", error);
+    }
 }
 
 /// <summary>The second battery changes what the tools compute, not just the name on the label.</summary>

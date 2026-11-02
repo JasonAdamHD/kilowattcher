@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef } from 'react'
 import type { HouseholdSettings, SettingsOptions } from '../api'
-import { homeName, priceError, toRequest, useSettings, type PriceField } from '../settings'
+import { clampLoad, homeName, maxLoadKw, priceError, toRequest, useSettings, type PriceField } from '../settings'
 import { LocationPicker } from './LocationPicker'
 
 type Props = {
@@ -44,6 +44,7 @@ export function SettingsPanel({ options, open, onClose, onChange }: Props) {
   }, [open, onClose])
 
   const battery = options.batteries.find((b) => b.id === values.battery)
+  const maxLoad = maxLoadKw(values.battery, options)
 
   return (
     <>
@@ -66,7 +67,8 @@ export function SettingsPanel({ options, open, onClose, onChange }: Props) {
             id={`${id}-battery`}
             className="input"
             value={values.battery}
-            onChange={(e) => update({ battery: e.target.value })}
+            // A smaller battery can't keep up a bigger drain, so bring the drain down to its limit.
+            onChange={(e) => update({ battery: e.target.value, loadKw: clampLoad(values.loadKw, e.target.value, options) })}
             aria-describedby={`${id}-battery-help`}
           >
             {options.batteries.map((b) => (
@@ -96,6 +98,26 @@ export function SettingsPanel({ options, open, onClose, onChange }: Props) {
             aria-valuetext={`${values.stateOfChargePercent}%`}
             onChange={(e) => update({ stateOfChargePercent: Number(e.target.value) })}
           />
+        </div>
+
+        <div className="field">
+          <label className="field__label" htmlFor={`${id}-load`}>
+            Battery drain: <output htmlFor={`${id}-load`}>{loadLabel(values.loadKw)}</output>
+          </label>
+          <input
+            id={`${id}-load`}
+            type="range"
+            min={0}
+            max={maxLoad}
+            step={0.1}
+            value={values.loadKw}
+            aria-valuetext={loadLabel(values.loadKw)}
+            aria-describedby={`${id}-load-help`}
+            onChange={(e) => update({ loadKw: clampLoad(Number(e.target.value), values.battery, options) })}
+          />
+          <span id={`${id}-load-help`} className="helper">
+            How fast the home is using the battery right now, up to this model's {maxLoad} kW maximum.
+          </span>
         </div>
 
         <LocationPicker
@@ -145,4 +167,9 @@ export function SettingsPanel({ options, open, onClose, onChange }: Props) {
       </aside>
     </>
   )
+}
+
+/** "1.2 kW", or "0 kW (idle)" when the battery isn't powering the home. */
+function loadLabel(kw: number): string {
+  return kw === 0 ? '0 kW (idle)' : `${kw.toFixed(1)} kW`
 }

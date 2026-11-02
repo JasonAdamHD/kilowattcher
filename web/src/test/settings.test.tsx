@@ -8,8 +8,8 @@ import { json, mockApi, reply, signedIn } from './mockApi'
 
 const OPTIONS: SettingsOptions = {
   batteries: [
-    { id: 'voltnest-13', name: 'VoltNest 13', capacityKwh: 13.5, maxChargeKw: 5, roundTripEfficiency: 0.9 },
-    { id: 'helio-powercell-10', name: 'Helio PowerCell 10', capacityKwh: 10, maxChargeKw: 3.8, roundTripEfficiency: 0.88 },
+    { id: 'voltnest-13', name: 'VoltNest 13', capacityKwh: 13.5, maxChargeKw: 5, maxDischargeKw: 5, roundTripEfficiency: 0.9 },
+    { id: 'helio-powercell-10', name: 'Helio PowerCell 10', capacityKwh: 10, maxChargeKw: 3.8, maxDischargeKw: 3.8, roundTripEfficiency: 0.88 },
   ],
   cities: [
     { id: 'phoenix', city: 'Phoenix, AZ' },
@@ -18,6 +18,7 @@ const OPTIONS: SettingsOptions = {
   defaults: {
     battery: 'voltnest-13',
     stateOfChargePercent: 42,
+    loadKw: 1.2,
     city: 'phoenix',
     cityName: 'Phoenix, AZ',
     superOffPeakPrice: 0.11,
@@ -96,7 +97,7 @@ describe('Settings panel', () => {
     await user.click(screen.getByRole('button', { name: 'Settings' }))
 
     await user.selectOptions(screen.getByLabelText('Battery'), 'helio-powercell-10')
-    fireEvent.change(screen.getByRole('slider'), { target: { value: '30' } })
+    fireEvent.change(screen.getByRole('slider', { name: /Battery charge/ }), { target: { value: '30' } })
     await user.click(screen.getByRole('button', { name: 'Seattle, WA' }))
     await user.clear(screen.getByLabelText('Peak (4–9 PM)'))
     await user.type(screen.getByLabelText('Peak (4–9 PM)'), '0.55')
@@ -112,6 +113,45 @@ describe('Settings panel', () => {
       history: [],
       settings: { battery: 'helio-powercell-10', stateOfChargePercent: 30, city: 'seattle', peakPrice: 0.55 },
     })
+  })
+
+  it("sets the battery drain, capped at the model's max discharge", async () => {
+    const { api, user } = await openChat()
+    await user.click(screen.getByRole('button', { name: 'Settings' }))
+    const drain = screen.getByRole('slider', { name: /Battery drain/ })
+
+    expect(drain).toHaveValue('1.2')
+    expect(drain).toHaveAttribute('max', '5')
+    expect(drain).toHaveAttribute('min', '0')
+
+    fireEvent.change(drain, { target: { value: '4.5' } })
+    expect(screen.getByText('4.5 kW')).toBeInTheDocument()
+
+    // The Helio tops out at 3.8 kW, so the drain comes down with it.
+    await user.selectOptions(screen.getByLabelText('Battery'), 'helio-powercell-10')
+    expect(drain).toHaveAttribute('max', '3.8')
+    expect(drain).toHaveValue('3.8')
+
+    await user.type(screen.getByLabelText('Your question'), 'hi{Enter}')
+    await screen.findByText(/Charge between midnight/)
+    expect(api.chatCalls()[0].body).toEqual({ message: 'hi', history: [], settings: { battery: 'helio-powercell-10', loadKw: 3.8 } })
+  })
+
+  it('shows zero drain as idle', async () => {
+    const { user } = await openChat()
+    await user.click(screen.getByRole('button', { name: 'Settings' }))
+
+    fireEvent.change(screen.getByRole('slider', { name: /Battery drain/ }), { target: { value: '0' } })
+
+    expect(screen.getByText('0 kW (idle)')).toBeInTheDocument()
+  })
+
+  it("pulls a saved drain back under the saved model's limit", async () => {
+    localStorage.setItem('kilowattcher.settings.v1', JSON.stringify({ battery: 'helio-powercell-10', loadKw: 4.9 }))
+    const { user } = await openChat()
+    await user.click(screen.getByRole('button', { name: 'Settings' }))
+
+    expect(screen.getByRole('slider', { name: /Battery drain/ })).toHaveValue('3.8')
   })
 
   it('finds a place by ZIP code and sends it with the next question', async () => {

@@ -5,6 +5,8 @@ import type { HouseholdSettings, Place, SettingsOptions } from './api'
 export type SettingsValues = {
   battery: string
   stateOfChargePercent: number
+  /** Battery drain in kW, kept within the chosen model's max discharge. */
+  loadKw: number
   /** The preset city id; ignored while a searched location is set. */
   city: string
   /** A place from the search box, or null to use the preset city. */
@@ -23,6 +25,7 @@ export function defaultValues(options: SettingsOptions): SettingsValues {
   return {
     battery: d.battery,
     stateOfChargePercent: d.stateOfChargePercent,
+    loadKw: d.loadKw,
     city: d.city ?? options.cities[0]?.id ?? '',
     location: null,
     superOffPeakPrice: d.superOffPeakPrice.toFixed(2),
@@ -49,6 +52,7 @@ export function toRequest(values: SettingsValues, options: SettingsOptions): Hou
   const out: HouseholdSettings = {}
   if (values.battery !== d.battery) out.battery = values.battery
   if (values.stateOfChargePercent !== d.stateOfChargePercent) out.stateOfChargePercent = values.stateOfChargePercent
+  if (values.loadKw !== d.loadKw) out.loadKw = values.loadKw
   if (values.location) out.location = values.location
   else if (values.city !== d.city) out.city = values.city
   for (const field of ['superOffPeakPrice', 'offPeakPrice', 'peakPrice'] as const) {
@@ -65,10 +69,12 @@ function load(options: SettingsOptions): SettingsValues {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') as Partial<SettingsValues> | null
     if (!saved) return defaults
     // Ignore anything the server no longer offers (a removed model or city).
+    const battery = options.batteries.some((b) => b.id === saved.battery) ? saved.battery! : defaults.battery
     return {
       ...defaults,
       ...saved,
-      battery: options.batteries.some((b) => b.id === saved.battery) ? saved.battery! : defaults.battery,
+      battery,
+      loadKw: typeof saved.loadKw === 'number' && Number.isFinite(saved.loadKw) ? clampLoad(saved.loadKw, battery, options) : defaults.loadKw,
       city: options.cities.some((c) => c.id === saved.city) ? saved.city! : defaults.city,
       location: isPlace(saved.location) ? saved.location : null,
       stateOfChargePercent:
@@ -79,6 +85,16 @@ function load(options: SettingsOptions): SettingsValues {
   } catch {
     return defaults
   }
+}
+
+/** The most this battery can discharge, so the drain slider never goes past it. */
+export function maxLoadKw(battery: string, options: SettingsOptions): number {
+  return options.batteries.find((b) => b.id === battery)?.maxDischargeKw ?? options.defaults.loadKw
+}
+
+/** Keeps the drain within the battery's limit, on the slider's 0.1 kW steps. */
+export function clampLoad(load: number, battery: string, options: SettingsOptions): number {
+  return Math.min(Math.max(0, Math.round(load * 10) / 10), maxLoadKw(battery, options))
 }
 
 /** A saved place must have every field; the server checks its signature on each question. */
