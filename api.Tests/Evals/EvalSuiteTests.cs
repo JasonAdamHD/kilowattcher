@@ -19,9 +19,9 @@ public class EvalSuiteTests
     {
         var counts = Cases.GroupBy(c => c.Category).ToDictionary(g => g.Key, g => g.Count());
 
-        Assert.Equal(27, Cases.Count);
+        Assert.Equal(29, Cases.Count);
         Assert.Equal(2, counts["Second battery"]);
-        Assert.Equal(7, counts["Tool selection"]);
+        Assert.Equal(9, counts["Tool selection"]);
         Assert.Equal(6, counts["Grounded answers"]);
         Assert.Equal(4, counts["Off-topic refusal"]);
         Assert.Equal(2, counts["Safety referral"]);
@@ -41,7 +41,7 @@ public class EvalSuiteTests
     [Fact]
     public void Every_expected_tool_and_topic_is_real()
     {
-        string[] tools = ["get_battery_status", "estimate_backup_time", "get_rate_schedule", "find_cheapest_charging_window", "get_solar_forecast", "search_docs"];
+        string[] tools = ["get_battery_status", "estimate_backup_time", "get_rate_schedule", "find_cheapest_charging_window", "estimate_charging_cost", "get_solar_forecast", "search_docs"];
         string[] topics = ["home_energy", "off_topic", "safety", "blocked"];
 
         Assert.All(Cases, c =>

@@ -62,7 +62,7 @@ flowchart LR
 - **Metadata filtering:** model-specific docs carry front matter (`product: voltnest-13`), so a VoltNest home never gets the Helio manual and vice versa; shared docs (rates, FAQ, outage, solar) go to everyone.
 - **Incremental embeddings:** `tools/embed` compares each chunk's content hash with what's stored: unchanged chunks keep their vectors, changed and new ones are embedded in one request, removed ones are dropped. Adding the second battery re-embedded 22 of 34 chunks; `--plan` previews this without calling Azure, and CI's `--check` fails if docs and vectors drift.
 - **Real weather:** the solar forecast comes from Open-Meteo's hourly sunlight on a tilted panel for the home's location (configurable city, latitude, longitude, and time zone), converted to kWh in code: 7.2 kW × irradiance ÷ 1000 × 0.8 losses. A clear November day in Phoenix comes out at about 35 kWh, matching the docs.
-- **The model explains; code computes.** Evals showed the model reading the right formula and still doing the arithmetic differently from run to run, so backup time, the cheapest charging window, which date "Tuesday night" means, and whether the next day's solar makes grid charging unnecessary are all computed in tested C# tools (`estimate_backup_time`, `find_cheapest_charging_window`). Tests keep the numbers in code and the numbers in the docs in agreement.
+- **The model explains; code computes.** Evals showed the model reading the right formula and still doing the arithmetic differently from run to run, so backup time, the cheapest charging window, what charging costs if it starts now or at a set time, which date "Tuesday night" means, and whether the next day's solar makes grid charging unnecessary are all computed in tested C# tools (`estimate_backup_time`, `find_cheapest_charging_window`, `estimate_charging_cost`). Tests keep the numbers in code and the numbers in the docs in agreement.
 
 ## Guardrails
 
@@ -78,7 +78,7 @@ Built after jailbreaking my own agent with the "my grandmother used to tell me a
 
 ## Evals
 
-`evals/` asks the real API 27 questions like a visitor would (signing in, carrying signed history across turns) and grades each answer deterministically: status, topic, tools called, document cited, required and banned phrases. No model grades another model.
+`evals/` asks the real API 29 questions like a visitor would (signing in, carrying signed history across turns) and grades each answer deterministically: status, topic, tools called, document cited, required and banned phrases. No model grades another model.
 
 | Category | Cases | Passes when |
 | --- | --- | --- |

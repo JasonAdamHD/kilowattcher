@@ -164,25 +164,12 @@ public sealed class ChargingWindowTool(IWeatherSource weather) : ITool
 
     internal static object Plan(Household household, HomeClock clock, ChargingRequest request)
     {
-        var battery = household.Status;
         var efficiency = household.Battery.RoundTripEfficiency;
         var periods = household.RatePeriods;
         var now = clock.Now;
-        var target = (int)Math.Round(request.TargetPercent ?? 100);
-        if (target is < 1 or > 100)
+        if (ChargingMath.Need(household, request.FromPercent, request.TargetPercent) is not ChargeNeed need)
         {
-            return new ToolError("target_percent must be between 1 and 100.");
-        }
-
-        var start = (int)Math.Round(request.FromPercent ?? battery.StateOfChargePercent);
-        if (start is < 0 or > 100)
-        {
-            return new ToolError("from_percent must be between 0 and 100.");
-        }
-
-        if (start >= target)
-        {
-            return new ToolError($"Starting at {start}%, the battery is already at or above the {target}% target. No grid charging needed.");
+            return ChargingMath.Need(household, request.FromPercent, request.TargetPercent);
         }
 
         // Where to look: the next 24 hours, or the chosen evening through the next morning.
@@ -204,9 +191,7 @@ public sealed class ChargingWindowTool(IWeatherSource weather) : ITool
             searchTo = now.AddHours(24);
         }
 
-        var energyToAdd = battery.CapacityKwh * (target - start) / 100.0;
-        var gridEnergy = energyToAdd / efficiency;
-        var chargeMinutes = (int)Math.Ceiling(energyToAdd / battery.MaxChargeKw * 60);
+        var chargeMinutes = need.ChargeMinutes;
         var slotsNeeded = (int)Math.Ceiling(chargeMinutes / (double)SlotMinutes);
 
         // 15-minute slots from the next quarter hour. Each slot's price comes from its local clock time,
@@ -238,28 +223,26 @@ public sealed class ChargingWindowTool(IWeatherSource weather) : ITool
         var windowStart = slots[bestStart];
         var windowEnd = windowStart.AddMinutes(chargeMinutes);
         var peakPrice = periods.Max(p => p.PricePerKwh);
+        var cost = ChargingMath.Total(windowStart, need, periods, clock.Zone);
 
         return new ChargingPlan(
             Local(searchFrom),
             Local(searchTo),
-            start,
+            need.FromPercent,
             request.FromPercent is null ? "live battery level" : "as asked",
-            target,
-            Math.Round(energyToAdd, 2),
-            Math.Round(gridEnergy, 2),
+            need.TargetPercent,
+            Math.Round(need.EnergyToAddKwh, 2),
+            Math.Round(need.GridEnergyKwh, 2),
             chargeMinutes,
             new ChargingWindow(Local(windowStart), Local(windowEnd), Describe(clock.Today, windowStart, windowEnd), PeriodAt(windowStart, periods).Name, bestAverage),
-            Math.Round((decimal)gridEnergy * bestAverage, 2),
-            Math.Round((decimal)gridEnergy * peakPrice, 2),
+            cost,
+            Math.Round((decimal)need.GridEnergyKwh * peakPrice, 2),
             efficiency,
             string.Create(CultureInfo.InvariantCulture, $"Costs include charging losses ({efficiency:P0} round-trip efficiency for the {household.Battery.Name})."));
     }
 
-    internal static RatePeriod PeriodAt(DateTimeOffset localTime, IReadOnlyList<RatePeriod> periods)
-    {
-        var time = localTime.ToString("HH:mm", CultureInfo.InvariantCulture);
-        return periods.First(p => string.CompareOrdinal(time, p.Start) >= 0 && string.CompareOrdinal(time, p.End) < 0);
-    }
+    internal static RatePeriod PeriodAt(DateTimeOffset localTime, IReadOnlyList<RatePeriod> periods) =>
+        ChargingMath.PeriodAt(localTime, periods);
 
     /// <summary>"tonight, midnight to 1:34 AM" or "Tuesday night, midnight to 1:34 AM", so the model doesn't work out dates.</summary>
     internal static string Describe(DateOnly today, DateTimeOffset start, DateTimeOffset end)
@@ -281,7 +264,7 @@ public sealed class ChargingWindowTool(IWeatherSource weather) : ITool
         return $"{when}, {Time(start)} to {Time(end)}";
     }
 
-    private static double? Number(JsonElement arguments, string name) =>
+    internal static double? Number(JsonElement arguments, string name) =>
         arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number
             ? v.GetDouble()
             : null;
@@ -295,7 +278,7 @@ public sealed class ChargingWindowTool(IWeatherSource weather) : ITool
 
     private static string Local(DateTimeOffset time) => time.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
 
-    private static string Time(DateTimeOffset t) => (t.Hour, t.Minute) switch
+    internal static string Time(DateTimeOffset t) => (t.Hour, t.Minute) switch
     {
         (0, 0) => "midnight",
         (12, 0) => "noon",
