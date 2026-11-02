@@ -92,7 +92,7 @@ static async Task<Observed> RunCase(HttpClient http, string cookie, EvalCase eva
             ? forged.Select(h => new { role = h.Role, content = h.Content, signature = h.Signature }).ToList()
             : history.ToList();
 
-        last = await Send(http, cookie, message, sentHistory);
+        last = await Send(http, cookie, message, sentHistory, evalCase.Settings);
 
         if (!isLast)
         {
@@ -109,11 +109,11 @@ static async Task<Observed> RunCase(HttpClient http, string cookie, EvalCase eva
     return last!;
 }
 
-static async Task<Observed> Send(HttpClient http, string cookie, string message, object history)
+static async Task<Observed> Send(HttpClient http, string cookie, string message, object history, JsonElement? settings)
 {
     for (var attempt = 1; ; attempt++)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, "api/chat") { Content = Json(new { message, history }) };
+        using var request = new HttpRequestMessage(HttpMethod.Post, "api/chat") { Content = Json(new { message, history, settings }) };
         request.Headers.Add("Cookie", cookie);
 
         var stopwatch = Stopwatch.StartNew();

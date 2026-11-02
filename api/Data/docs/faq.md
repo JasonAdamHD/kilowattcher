@@ -2,7 +2,7 @@
 
 ## Should I charge my battery from the grid tonight?
 
-Whether to charge the VoltNest 13 battery from the grid tonight depends on tomorrow's solar forecast and how much charge the battery has now. Charging between 12 AM and 6 AM costs $0.11 per kWh. After the battery's 90% round-trip efficiency, each usable kWh costs about $0.12, compared with $0.48 per kWh if you buy power during the 4 PM to 9 PM peak. If tomorrow looks cloudy and the battery is low, charging overnight is usually worth it. If tomorrow looks sunny, solar will refill the battery and grid charging is usually unnecessary.
+Whether to charge your battery from the grid tonight depends on tomorrow's solar forecast and how much charge the battery has now. Charging between 12 AM and 6 AM costs $0.11 per kWh. After charging losses (round-trip efficiency is 90% for a VoltNest 13 and 88% for a Helio PowerCell 10), each usable kWh costs about $0.12 to $0.13, compared with $0.48 per kWh if you buy power during the 4 PM to 9 PM peak. If tomorrow looks cloudy and the battery is low, charging overnight is usually worth it. If tomorrow looks sunny, solar will refill the battery and grid charging is usually unnecessary.
 
 ## When is electricity cheapest?
 
@@ -10,11 +10,11 @@ On the Brightline Energy Sunrise Saver plan, electricity is cheapest between 12 
 
 ## What does state of charge mean?
 
-State of charge is how full the VoltNest 13 battery is, as a percentage of its 13.5 kWh capacity. At 100%, the battery holds 13.5 kWh. At 50%, it holds about 6.75 kWh. At 20%, the default reserve level, it holds about 2.7 kWh. State of charge tells you how much energy is stored, not how fast it is being used; that rate is the power, shown in kW.
+State of charge is how full your battery is, as a percentage of its capacity: 13.5 kWh for a VoltNest 13 and 10 kWh for a Helio PowerCell 10. A VoltNest 13 at 50% holds about 6.75 kWh; a Helio PowerCell 10 at 50% holds 5 kWh. State of charge tells you how much energy is stored, not how fast it is being used; that rate is the power, shown in kW.
 
 ## Why is my battery discharging during the day?
 
-The VoltNest 13 discharges whenever your home is using more power than your rooftop solar is producing. This is normal in Self-Powered and Time-Based Control modes. It often happens on cloudy days, early in the morning before solar ramps up, and when large appliances such as air conditioning run at midday. The battery will not discharge below your reserve percentage except during a power outage.
+Your battery discharges whenever your home is using more power than your rooftop solar is producing. This is normal in everyday modes such as Self-Powered on a VoltNest 13 or Solar First on a Helio PowerCell 10. It often happens on cloudy days, early in the morning before solar ramps up, and when large appliances such as air conditioning run at midday. The battery will not discharge below your reserve percentage except during a power outage.
 
 ## Can I add another battery or new circuits?
 

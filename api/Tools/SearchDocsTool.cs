@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Kilowattcher.Api.Households;
 using Kilowattcher.Api.Rag;
 
 namespace Kilowattcher.Api.Tools;
@@ -20,8 +21,8 @@ public sealed class SearchDocsTool(DocIndexProvider indexProvider, IEmbeddingCli
     public string Name => "search_docs";
 
     public string Description =>
-        "Search the home's documents (VoltNest 13 battery manual, Sunrise Saver rate plan, outage backup guide, " +
-        "solar basics, FAQ) and return the 3 most relevant passages with their IDs. Use it for what a setting " +
+        "Search the home's documents (the manual for this household's battery, Sunrise Saver rate plan, outage backup " +
+        "guide, solar basics, FAQ) and return the 3 most relevant passages with their IDs. Use it for what a setting " +
         "or term means, how the battery or solar works, outage advice, and plan rules.";
 
     public string ParametersSchema => """
@@ -35,7 +36,7 @@ public sealed class SearchDocsTool(DocIndexProvider indexProvider, IEmbeddingCli
         }
         """;
 
-    public async Task<object> ExecuteAsync(JsonElement arguments, CancellationToken cancellationToken)
+    public async Task<object> ExecuteAsync(JsonElement arguments, ToolContext context, CancellationToken cancellationToken)
     {
         var query = ToolArguments.GetString(arguments, "query")?.Trim();
         if (string.IsNullOrEmpty(query) || query.Length > MaxQueryLength)
@@ -61,7 +62,8 @@ public sealed class SearchDocsTool(DocIndexProvider indexProvider, IEmbeddingCli
             return new DocSearchResult([], "Document search is temporarily unavailable. Answer from tool data only and say the documents couldn't be checked.");
         }
 
-        var hits = index.Search(vector, TopResults)
+        // Only shared docs and this household's battery manual: never another model's specs.
+        var hits = index.Search(vector, TopResults, context.Household.Battery.Product)
             .Select(m => new DocSearchHit(m.Chunk.Id, m.Chunk.Title, m.Chunk.Heading, m.Chunk.Text, Math.Round(m.Score, 3)))
             .ToList();
 

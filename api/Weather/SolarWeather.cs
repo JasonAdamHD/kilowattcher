@@ -15,8 +15,9 @@ public interface IWeatherSource
     /// <summary>Human-readable source for tool results, such as "Open-Meteo live forecast".</summary>
     string Description { get; }
 
+    /// <param name="clock">The home's clock: its location says where, its time zone says which day is which.</param>
     /// <returns>The hours for that local date, or empty when the date is outside the forecast.</returns>
-    Task<IReadOnlyList<WeatherHour>> GetDayAsync(DateOnly date, CancellationToken cancellationToken);
+    Task<IReadOnlyList<WeatherHour>> GetDayAsync(HomeClock clock, DateOnly date, CancellationToken cancellationToken);
 }
 
 public sealed class WeatherUnavailableException(string message, Exception? inner = null) : Exception(message, inner);
@@ -51,9 +52,9 @@ public sealed record OpenMeteoHourly(
 
 /// <summary>
 /// Live forecast from the free Open-Meteo API (no key; data by Open-Meteo.com, CC BY 4.0).
-/// One 7-day request is cached for 30 minutes, so a busy demo makes a handful of calls an hour.
+/// One 7-day request per location is cached for 30 minutes, so a busy demo makes a handful of calls an hour.
 /// </summary>
-public sealed class OpenMeteoWeatherSource(HttpClient http, HomeClock clock, TimeProvider time, ILogger<OpenMeteoWeatherSource> logger) : IWeatherSource
+public sealed class OpenMeteoWeatherSource(HttpClient http, TimeProvider time, ILogger<OpenMeteoWeatherSource> logger) : IWeatherSource
 {
     public const int ForecastDays = 7;
 
@@ -64,27 +65,27 @@ public sealed class OpenMeteoWeatherSource(HttpClient http, HomeClock clock, Tim
     private static readonly TimeSpan CacheFor = TimeSpan.FromMinutes(30);
 
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private (DateTimeOffset FetchedAt, IReadOnlyList<WeatherHour> Hours)? _cache;
+    private readonly Dictionary<string, (DateTimeOffset FetchedAt, IReadOnlyList<WeatherHour> Hours)> _cache = [];
 
     public string Description => "Open-Meteo live forecast";
 
-    public async Task<IReadOnlyList<WeatherHour>> GetDayAsync(DateOnly date, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<WeatherHour>> GetDayAsync(HomeClock clock, DateOnly date, CancellationToken cancellationToken)
     {
-        var hours = await GetForecastAsync(cancellationToken);
+        var hours = await GetForecastAsync(clock.Location, cancellationToken);
         return hours.Where(h => DateOnly.FromDateTime(h.LocalTime) == date).ToList();
     }
 
-    private async Task<IReadOnlyList<WeatherHour>> GetForecastAsync(CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<WeatherHour>> GetForecastAsync(HomeLocation location, CancellationToken cancellationToken)
     {
+        var key = string.Create(CultureInfo.InvariantCulture, $"{location.Latitude:F3},{location.Longitude:F3},{location.TimeZone}");
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            if (_cache is { } cached && time.GetUtcNow() - cached.FetchedAt < CacheFor)
+            if (_cache.TryGetValue(key, out var cached) && time.GetUtcNow() - cached.FetchedAt < CacheFor)
             {
                 return cached.Hours;
             }
 
-            var location = clock.Location;
             var url = string.Create(CultureInfo.InvariantCulture,
                 $"https://api.open-meteo.com/v1/forecast?latitude={location.Latitude}&longitude={location.Longitude}" +
                 $"&hourly=global_tilted_irradiance,cloud_cover,temperature_2m&tilt={PanelTilt}&azimuth={PanelAzimuth}" +
@@ -95,8 +96,8 @@ public sealed class OpenMeteoWeatherSource(HttpClient http, HomeClock clock, Tim
                 var response = await http.GetFromJsonAsync<OpenMeteoResponse>(url, cancellationToken)
                     ?? throw new WeatherUnavailableException("Open-Meteo returned an empty body.");
                 var hours = response.ToHours();
-                _cache = (time.GetUtcNow(), hours);
-                logger.LogInformation("Fetched {Hours} forecast hours from Open-Meteo.", hours.Count);
+                _cache[key] = (time.GetUtcNow(), hours);
+                logger.LogInformation("Fetched {Hours} forecast hours from Open-Meteo for {City}.", hours.Count, location.City);
                 return hours;
             }
             // HttpClient reports its own timeout as TaskCanceledException; a cancelled request is not "unavailable".
@@ -124,16 +125,14 @@ public sealed class RecordedWeatherSource : IWeatherSource
 {
     public const string FileName = "open-meteo-recorded.json";
 
-    private readonly HomeClock _clock;
     private readonly Lazy<IReadOnlyList<WeatherHour>> _hours;
 
-    public RecordedWeatherSource(HomeClock clock) : this(clock, Path.Combine(AppContext.BaseDirectory, "Data", "weather", FileName))
+    public RecordedWeatherSource() : this(Path.Combine(AppContext.BaseDirectory, "Data", "weather", FileName))
     {
     }
 
-    internal RecordedWeatherSource(HomeClock clock, string path)
+    internal RecordedWeatherSource(string path)
     {
-        _clock = clock;
         _hours = new Lazy<IReadOnlyList<WeatherHour>>(() =>
             (JsonSerializer.Deserialize<OpenMeteoResponse>(File.ReadAllText(path))
                 ?? throw new WeatherUnavailableException("The recorded forecast is empty.")).ToHours());
@@ -141,11 +140,12 @@ public sealed class RecordedWeatherSource : IWeatherSource
 
     public string Description => "Recorded Open-Meteo forecast (replay for tests and evals)";
 
-    public Task<IReadOnlyList<WeatherHour>> GetDayAsync(DateOnly date, CancellationToken cancellationToken)
+    /// <remarks>The same recording plays for every city: replay is about stable scores, not geography.</remarks>
+    public Task<IReadOnlyList<WeatherHour>> GetDayAsync(HomeClock clock, DateOnly date, CancellationToken cancellationToken)
     {
         var hours = _hours.Value;
         var firstRecorded = DateOnly.FromDateTime(hours[0].LocalTime);
-        var recordedDate = firstRecorded.AddDays(date.DayNumber - _clock.Today.AddDays(1).DayNumber);
+        var recordedDate = firstRecorded.AddDays(date.DayNumber - clock.Today.AddDays(1).DayNumber);
 
         IReadOnlyList<WeatherHour> day = hours
             .Where(h => DateOnly.FromDateTime(h.LocalTime) == recordedDate)

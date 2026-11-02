@@ -19,7 +19,8 @@ public class EvalSuiteTests
     {
         var counts = Cases.GroupBy(c => c.Category).ToDictionary(g => g.Key, g => g.Count());
 
-        Assert.Equal(25, Cases.Count);
+        Assert.Equal(27, Cases.Count);
+        Assert.Equal(2, counts["Second battery"]);
         Assert.Equal(7, counts["Tool selection"]);
         Assert.Equal(6, counts["Grounded answers"]);
         Assert.Equal(4, counts["Off-topic refusal"]);

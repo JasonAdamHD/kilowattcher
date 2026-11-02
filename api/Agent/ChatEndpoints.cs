@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Kilowattcher.Api.Auth;
+using Kilowattcher.Api.Households;
 using Kilowattcher.Api.Safety;
 
 namespace Kilowattcher.Api.Agent;
@@ -9,7 +10,8 @@ public static class ChatEndpoints
     public static void MapChatEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost("/api/chat", async (ChatRequest? request, HttpContext http, SessionTokenService sessions,
-                AgentRunner agent, IPromptShield shield, HistorySigner signer, ILoggerFactory loggers, CancellationToken cancellationToken) =>
+                AgentRunner agent, IPromptShield shield, HistorySigner signer, HouseholdResolver households, TimeProvider time,
+                ILoggerFactory loggers, CancellationToken cancellationToken) =>
         {
             if (!http.HasValidSession(sessions))
             {
@@ -28,6 +30,14 @@ public static class ChatEndpoints
                 return Results.BadRequest(new ApiError("invalid_history"));
             }
 
+            // This visitor's household: config defaults plus their settings panel choices, validated.
+            if (households.Resolve(request.Settings, out var settingsError) is not { } household)
+            {
+                return Results.BadRequest(new ApiError(settingsError!));
+            }
+
+            var context = ToolContext.For(household, time);
+
             var conversation = (request!.History ?? [])
                 .Select(h => h.Role == ChatRole.Assistant ? (AgentItem)new AssistantItem(h.Content!) : new UserItem(h.Content!))
                 .Append(new UserItem(request.Message!))
@@ -43,7 +53,7 @@ public static class ChatEndpoints
                     return Blocked(signer);
                 }
 
-                var result = await agent.RunAsync(conversation, cancellationToken);
+                var result = await agent.RunAsync(conversation, context, cancellationToken);
                 return Results.Ok(new ChatResponse(
                     result.Topic, result.Answer, result.ToolCalls, result.Citations, result.SuggestedQuestion, signer.Sign(result.Answer)));
             }

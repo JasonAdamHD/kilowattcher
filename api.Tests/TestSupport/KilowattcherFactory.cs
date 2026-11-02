@@ -42,7 +42,7 @@ public sealed class KilowattcherFactory : WebApplicationFactory<Program>
             services.AddSingleton<IChatModel>(ChatModel);
             services.AddSingleton<IEmbeddingClient>(Embeddings);
             services.AddSingleton<Kilowattcher.Api.Weather.IWeatherSource>(sp =>
-                TestWeather.Recorded(sp.GetRequiredService<Kilowattcher.Api.Tools.HomeClock>()));
+                TestWeather.Recorded());
             services.AddSingleton<Kilowattcher.Api.Safety.IAnswerJudge>(Judge);
             services.AddSingleton<Kilowattcher.Api.Safety.IPromptShield>(Shield);
             services.AddSingleton(TestIndex.Provider(TestIndex.ThreeAxes()));

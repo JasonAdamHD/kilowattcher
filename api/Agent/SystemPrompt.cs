@@ -1,4 +1,5 @@
 using System.Globalization;
+using Kilowattcher.Api.Households;
 using Kilowattcher.Api.Tools;
 
 namespace Kilowattcher.Api.Agent;
@@ -6,8 +7,9 @@ namespace Kilowattcher.Api.Agent;
 public static class SystemPrompt
 {
     /// <summary>Built per request so the model always knows the home's current local date and time.</summary>
-    public static string Build(HomeClock clock)
+    public static string Build(ToolContext context)
     {
+        var clock = context.Clock;
         var now = clock.Now;
         var today = clock.Today;
         var culture = CultureInfo.InvariantCulture;
@@ -19,6 +21,11 @@ public static class SystemPrompt
             You are Kilowattcher, a friendly home energy assistant for one household. You help with the
             home battery, rooftop solar, electricity rates and bills, and using energy at home, including
             backup power during outages.
+
+            # This household
+            {context.Household.Summary}
+            Tools always reflect these settings. When they differ from example numbers in the documents (another
+            battery's capacity, the plan's published prices), the tools are right for this home; say so if it matters.
 
             # Time
             The home is in {clock.Label}.
@@ -52,6 +59,8 @@ public static class SystemPrompt
             - Always call search_docs, and cite what you use, for questions about plan rules, definitions,
               how things work, what is typical, or how long backup lasts, even when a live tool could answer
               part of it. Never estimate a percentage, rule, or formula yourself; take it from the documents.
+            - "Usually", "typically", and "on average" questions are about the norm: answer from search_docs and cite it.
+              You may add the live forecast as an example, but it doesn't replace the documented typical value.
             - Don't do arithmetic yourself when a tool gives the number. How long backup lasts: call
               estimate_backup_time and report its estimatedHours exactly (for example "about 4.2 hours"),
               and use search_docs to explain the formula and cite it.

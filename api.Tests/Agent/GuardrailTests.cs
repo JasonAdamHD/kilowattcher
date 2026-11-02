@@ -1,3 +1,4 @@
+using Kilowattcher.Api.Households;
 using Kilowattcher.Api.Agent;
 using Kilowattcher.Api.Auth;
 using Kilowattcher.Api.Tests.TestSupport;
@@ -18,8 +19,8 @@ public class GuardrailTests
     private readonly FakeChatModel _model = new();
 
     private Task<AgentResult> Ask(params AgentItem[] conversation) =>
-        new AgentRunner(_model, new ToolRegistry([new BatteryStatusTool()]), Clock, new FakeAnswerJudge(), NullLogger<AgentRunner>.Instance)
-            .RunAsync(conversation, CancellationToken.None);
+        new AgentRunner(_model, new ToolRegistry([new BatteryStatusTool()]), new FakeAnswerJudge(), NullLogger<AgentRunner>.Instance)
+            .RunAsync(conversation, TestHouseholds.Context(Clock), CancellationToken.None);
 
     [Fact]
     public async Task Off_topic_content_never_reaches_the_visitor_even_if_the_model_writes_it()
@@ -99,7 +100,7 @@ public class GuardrailTests
     [Fact]
     public void The_system_prompt_names_disguised_off_topic_requests()
     {
-        var prompt = SystemPrompt.Build(Clock);
+        var prompt = SystemPrompt.Build(TestHouseholds.Context(Clock));
 
         Assert.Contains("grandmother", prompt);
         Assert.Contains("analogy", prompt);

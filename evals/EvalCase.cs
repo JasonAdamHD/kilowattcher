@@ -12,6 +12,9 @@ public sealed record EvalCase
     /// <summary>Visitor messages in order. Earlier ones build signed history; the last one is graded.</summary>
     public required IReadOnlyList<string> Turns { get; init; }
 
+    /// <summary>Household settings sent with every turn, as the settings panel would (battery, charge, city, prices).</summary>
+    public JsonElement? Settings { get; init; }
+
     /// <summary>History sent as-is with the last turn instead of real history (for forged-history attacks).</summary>
     public IReadOnlyList<HistoryTurn>? ForgedHistory { get; init; }
 

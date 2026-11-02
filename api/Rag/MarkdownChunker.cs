@@ -4,11 +4,16 @@ using System.Text.RegularExpressions;
 
 namespace Kilowattcher.Api.Rag;
 
-/// <summary>One searchable passage: a "##" section of a doc.</summary>
-public sealed record DocChunk(string Id, string Title, string Heading, string Text)
+/// <summary>
+/// One searchable passage: a "##" section of a doc. <see cref="Product"/> comes from the doc's front matter
+/// ("product: voltnest-13"); null means the passage applies to every household.
+/// </summary>
+public sealed record DocChunk(string Id, string Title, string Heading, string Text, string? Product = null)
 {
-    /// <summary>What gets embedded: title and heading give the vector context the body alone lacks.</summary>
-    public string EmbeddingInput => $"{Title} — {Heading}\n\n{Text}";
+    /// <summary>What gets embedded: title, heading, and product give the vector context the body alone lacks.</summary>
+    public string EmbeddingInput => Product is null
+        ? $"{Title} — {Heading}\n\n{Text}"
+        : $"{Title} — {Heading} (product: {Product})\n\n{Text}";
 
     /// <summary>Detects docs that changed after embeddings.json was built.</summary>
     public string ContentHash => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(EmbeddingInput)));
@@ -30,6 +35,8 @@ public static partial class MarkdownChunker
     public static IReadOnlyList<DocChunk> Chunk(string docName, string markdown)
     {
         var lines = markdown.ReplaceLineEndings("\n").Split('\n');
+        var (product, bodyStart) = ReadFrontMatter(lines);
+        lines = lines[bodyStart..];
         var title = lines.FirstOrDefault(l => l.StartsWith("# ", StringComparison.Ordinal))?[2..].Trim() ?? docName;
 
         var chunks = new List<DocChunk>();
@@ -41,7 +48,7 @@ public static partial class MarkdownChunker
             var text = body.ToString().Trim();
             if (heading is not null && text.Length > 0)
             {
-                chunks.Add(new DocChunk($"{docName}#{Slug(heading)}", title, heading, text));
+                chunks.Add(new DocChunk($"{docName}#{Slug(heading)}", title, heading, text, product));
             }
 
             body.Clear();
@@ -70,6 +77,42 @@ public static partial class MarkdownChunker
         }
 
         return chunks;
+    }
+
+    /// <summary>
+    /// Optional front matter at the very top of a doc:
+    /// <code>
+    /// ---
+    /// product: voltnest-13
+    /// ---
+    /// </code>
+    /// Returns the product (or null) and the index of the first body line.
+    /// </summary>
+    internal static (string? Product, int BodyStart) ReadFrontMatter(string[] lines)
+    {
+        if (lines.Length == 0 || lines[0].Trim() != "---")
+        {
+            return (null, 0);
+        }
+
+        string? product = null;
+        for (var i = 1; i < lines.Length; i++)
+        {
+            var line = lines[i].Trim();
+            if (line == "---")
+            {
+                return (product, i + 1);
+            }
+
+            var colon = line.IndexOf(':');
+            if (colon > 0 && line[..colon].Trim() == "product")
+            {
+                product = line[(colon + 1)..].Trim();
+                product = product.Length == 0 ? null : product;
+            }
+        }
+
+        throw new InvalidOperationException("Front matter starts with --- but never closes with ---.");
     }
 
     /// <summary>"What backup can't power" → "what-backup-cant-power".</summary>

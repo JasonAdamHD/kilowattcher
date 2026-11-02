@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Kilowattcher.Api.Households;
 
 namespace Kilowattcher.Api.Tools;
 
@@ -13,19 +14,16 @@ public sealed record BackupEstimate(
 
 /// <summary>
 /// Works out how long the battery can power the home in an outage, in code, so the answer is the same
-/// every time. The model only explains the result. The formula and the 5% floor come from
-/// api/Data/docs/outage-backup.md ("How long backup lasts"); a test keeps the two in step.
+/// every time. The model only explains the result. The formula comes from
+/// outage-backup.md and each model's floor from its manual; tests keep them in step.
 /// </summary>
 public sealed class BackupEstimateTool : ITool
 {
-    /// <summary>The battery always keeps this much to protect itself, even during an outage.</summary>
-    public const int BackupFloorPercent = 5;
-
     public string Name => "estimate_backup_time";
 
     public string Description =>
         "Estimate how many hours the home battery can power the house if the grid goes down, using the live " +
-        "state of charge and the documented backup formula (usable energy above the 5% floor divided by the home's load). " +
+        "state of charge and the documented backup formula (usable energy above the battery model's backup floor divided by the home's load). " +
         "Pass load_kw to estimate for a different load, or null to use the home's current load.";
 
     public string ParametersSchema => """
@@ -42,13 +40,13 @@ public sealed class BackupEstimateTool : ITool
         }
         """;
 
-    public Task<object> ExecuteAsync(JsonElement arguments, CancellationToken cancellationToken) =>
-        Task.FromResult(Execute(arguments));
+    public Task<object> ExecuteAsync(JsonElement arguments, ToolContext context, CancellationToken cancellationToken) =>
+        Task.FromResult(Estimate(context.Household, ReadLoad(arguments)));
 
-    internal object Execute(JsonElement arguments) => Estimate(BatteryStatusTool.Status, ReadLoad(arguments));
-
-    internal static object Estimate(BatteryStatus battery, double? requestedLoadKw)
+    internal static object Estimate(Household household, double? requestedLoadKw)
     {
+        var battery = household.Status;
+        var floor = household.Battery.BackupFloorPercent;
         double loadKw;
         string loadSource;
 
@@ -77,17 +75,17 @@ public sealed class BackupEstimateTool : ITool
             return new ToolError("The battery isn't powering the home right now, so there's no current load. Pass load_kw.");
         }
 
-        var usablePercent = Math.Max(0, battery.StateOfChargePercent - BackupFloorPercent);
+        var usablePercent = Math.Max(0, battery.StateOfChargePercent - floor);
         var usableKwh = battery.CapacityKwh * usablePercent / 100.0;
 
         return new BackupEstimate(
             battery.StateOfChargePercent,
-            BackupFloorPercent,
+            floor,
             Math.Round(usableKwh, 2),
             loadKw,
             loadSource,
             Math.Round(usableKwh / loadKw, 1),
-            $"({battery.StateOfChargePercent}% - {BackupFloorPercent}%) x {battery.CapacityKwh} kWh / {loadKw} kW");
+            $"({battery.StateOfChargePercent}% - {floor}%) x {battery.CapacityKwh} kWh / {loadKw} kW");
     }
 
     private static double? ReadLoad(JsonElement arguments) =>

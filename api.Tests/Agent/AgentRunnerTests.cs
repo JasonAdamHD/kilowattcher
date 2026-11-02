@@ -1,3 +1,4 @@
+using Kilowattcher.Api.Households;
 using System.Text.Json;
 using Kilowattcher.Api.Agent;
 using Kilowattcher.Api.Rag;
@@ -16,16 +17,16 @@ public class AgentRunnerTests
     /// <summary>The real tools, with any extra tool added or replacing the one with the same name.</summary>
     private AgentRunner CreateRunner(params ITool[] extraTools)
     {
-        ITool[] defaults = [new BatteryStatusTool(), new RateScheduleTool(Clock), new SolarForecastTool(Clock, TestWeather.Recorded(Clock)), Search(TestIndex.ThreeAxes())];
+        ITool[] defaults = [new BatteryStatusTool(), new RateScheduleTool(), new SolarForecastTool(TestWeather.Recorded()), Search(TestIndex.ThreeAxes())];
         var tools = defaults.Where(d => extraTools.All(e => e.Name != d.Name)).Concat(extraTools);
-        return new AgentRunner(_model, new ToolRegistry(tools), Clock, new FakeAnswerJudge(), NullLogger<AgentRunner>.Instance);
+        return new AgentRunner(_model, new ToolRegistry(tools), new FakeAnswerJudge(), NullLogger<AgentRunner>.Instance);
     }
 
     private static SearchDocsTool Search(DocIndex index) =>
         new(TestIndex.Provider(index), new FakeEmbeddingClient(), NullLogger<SearchDocsTool>.Instance);
 
     private Task<AgentResult> Ask(string question, AgentRunner? runner = null) =>
-        (runner ?? CreateRunner()).RunAsync([new UserItem(question)], CancellationToken.None);
+        (runner ?? CreateRunner()).RunAsync([new UserItem(question)], TestHouseholds.Context(Clock), CancellationToken.None);
 
     [Fact]
     public async Task Answers_without_tools_when_none_are_requested()
@@ -234,7 +235,7 @@ public class AgentRunnerTests
         public string Name => "explode";
         public string Description => "Always throws.";
         public string ParametersSchema => ToolArguments.NoArgumentsSchema;
-        public Task<object> ExecuteAsync(JsonElement arguments, CancellationToken cancellationToken) =>
+        public Task<object> ExecuteAsync(JsonElement arguments, Kilowattcher.Api.Households.ToolContext context, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("boom");
     }
 
@@ -244,7 +245,7 @@ public class AgentRunnerTests
         public string Name => "search_docs";
         public string Description => "Test search.";
         public string ParametersSchema => ToolArguments.NoArgumentsSchema;
-        public Task<object> ExecuteAsync(JsonElement arguments, CancellationToken cancellationToken) =>
+        public Task<object> ExecuteAsync(JsonElement arguments, Kilowattcher.Api.Households.ToolContext context, CancellationToken cancellationToken) =>
             Task.FromResult<object>(new DocSearchResult([new DocSearchHit(id, "Battery manual", "Reserve", "Reserve keeps charge for outages.", 0.9)], null));
     }
 }

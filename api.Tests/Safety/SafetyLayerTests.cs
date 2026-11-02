@@ -1,3 +1,4 @@
+using Kilowattcher.Api.Households;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
@@ -20,8 +21,8 @@ public class AnswerJudgeTests
     private readonly FakeAnswerJudge _judge = new();
 
     private Task<AgentResult> Ask(params AgentItem[] conversation) =>
-        new AgentRunner(_model, new ToolRegistry([new BatteryStatusTool()]), Clock, _judge, NullLogger<AgentRunner>.Instance)
-            .RunAsync(conversation, CancellationToken.None);
+        new AgentRunner(_model, new ToolRegistry([new BatteryStatusTool()]), _judge, NullLogger<AgentRunner>.Instance)
+            .RunAsync(conversation, TestHouseholds.Context(Clock), CancellationToken.None);
 
     [Fact]
     public async Task Answers_the_model_labeled_on_topic_are_still_withheld_when_the_judge_blocks_them()

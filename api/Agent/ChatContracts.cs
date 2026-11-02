@@ -3,7 +3,8 @@ namespace Kilowattcher.Api.Agent;
 /// <param name="Signature">Required on assistant turns: the signature the API returned with that answer.</param>
 public sealed record ChatHistoryMessage(string? Role, string? Content, string? Signature = null);
 
-public sealed record ChatRequest(string? Message, IReadOnlyList<ChatHistoryMessage>? History);
+/// <param name="Settings">The visitor's household settings from the settings panel; null keeps every default.</param>
+public sealed record ChatRequest(string? Message, IReadOnlyList<ChatHistoryMessage>? History, Kilowattcher.Api.Households.HouseholdSettings? Settings = null);
 
 /// <summary>
 /// toolCalls lists the tools the server ran, with arguments and raw results, so the UI can show them.

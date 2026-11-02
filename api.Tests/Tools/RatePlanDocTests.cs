@@ -6,7 +6,7 @@ using Kilowattcher.Api.Tools;
 namespace Kilowattcher.Api.Tests.Tools;
 
 /// <summary>
-/// The rate plan lives in two places: RateScheduleTool.Periods (what the tools compute with) and
+/// The rate plan lives in two places: RateScheduleTool.DefaultPeriods (what the tools compute with) and
 /// time-of-use-plan.md (what the agent cites). If either is edited alone, the agent would contradict
 /// itself, so these tests fail the build until both say the same thing.
 /// </summary>
@@ -17,7 +17,7 @@ public class RatePlanDocTests
     public static TheoryData<string, string, string, decimal> Periods()
     {
         var data = new TheoryData<string, string, string, decimal>();
-        foreach (var p in RateScheduleTool.Periods)
+        foreach (var p in RateScheduleTool.DefaultPeriods)
         {
             data.Add(p.Name, p.Start, p.End, p.PricePerKwh);
         }
@@ -32,14 +32,14 @@ public class RatePlanDocTests
         var expected = $"from {Spoken(start)} to {Spoken(end)} at ${price.ToString("0.00", CultureInfo.InvariantCulture)} per kWh";
 
         Assert.True(RateSection.Contains(expected, StringComparison.Ordinal),
-            $"time-of-use-plan.md \"Rate periods and prices\" should say \"{name} … {expected}\" to match RateScheduleTool.Periods.");
+            $"time-of-use-plan.md \"Rate periods and prices\" should say \"{name} … {expected}\" to match RateScheduleTool.DefaultPeriods.");
         Assert.Contains(name, RateSection, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
     public void The_doc_lists_no_prices_the_code_does_not_have()
     {
-        var codePrices = RateScheduleTool.Periods.Select(p => p.PricePerKwh.ToString("0.00", CultureInfo.InvariantCulture)).ToHashSet();
+        var codePrices = RateScheduleTool.DefaultPeriods.Select(p => p.PricePerKwh.ToString("0.00", CultureInfo.InvariantCulture)).ToHashSet();
         var docPrices = System.Text.RegularExpressions.Regex.Matches(RateSection, @"\$(\d+\.\d{2}) per kWh").Select(m => m.Groups[1].Value);
 
         Assert.All(docPrices, price => Assert.Contains(price, codePrices));
@@ -49,8 +49,8 @@ public class RatePlanDocTests
     public void Cheapest_and_most_expensive_prices_match_the_faq()
     {
         var faq = Section("faq#when-is-electricity-cheapest");
-        var cheapest = RateScheduleTool.Periods.MinBy(p => p.PricePerKwh)!;
-        var priciest = RateScheduleTool.Periods.MaxBy(p => p.PricePerKwh)!;
+        var cheapest = RateScheduleTool.DefaultPeriods.MinBy(p => p.PricePerKwh)!;
+        var priciest = RateScheduleTool.DefaultPeriods.MaxBy(p => p.PricePerKwh)!;
 
         Assert.Contains($"{Spoken(cheapest.Start)} and {Spoken(cheapest.End)}, at ${cheapest.PricePerKwh:0.00} per kWh", faq);
         Assert.Contains($"{Spoken(priciest.Start)} to {Spoken(priciest.End)}, at ${priciest.PricePerKwh:0.00} per kWh", faq);

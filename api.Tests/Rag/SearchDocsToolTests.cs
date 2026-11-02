@@ -1,3 +1,4 @@
+using Kilowattcher.Api.Households;
 using System.Text.Json;
 using Kilowattcher.Api.Rag;
 using Kilowattcher.Api.Tests.TestSupport;
@@ -8,6 +9,8 @@ namespace Kilowattcher.Api.Tests.Rag;
 
 public class SearchDocsToolTests
 {
+    private static readonly ToolContext Context = TestHouseholds.Context(HomeClock.For(TimeProvider.System));
+
     private static JsonElement Query(string query) => JsonSerializer.SerializeToElement(new { query });
 
     private static SearchDocsTool Create(DocIndex index, FakeEmbeddingClient embeddings) =>
@@ -19,7 +22,7 @@ public class SearchDocsToolTests
         var embeddings = new FakeEmbeddingClient(_ => [0.9f, 0.1f, 0.2f]);
 
         var result = Assert.IsType<DocSearchResult>(
-            await Create(TestIndex.ThreeAxes(), embeddings).ExecuteAsync(Query("reserve percentage"), CancellationToken.None));
+            await Create(TestIndex.ThreeAxes(), embeddings).ExecuteAsync(Query("reserve percentage"), Context, CancellationToken.None));
 
         Assert.Equal(SearchDocsTool.TopResults, result.Results.Count);
         Assert.Equal("battery-manual#reserve-percentage", result.Results[0].Id);
@@ -35,7 +38,7 @@ public class SearchDocsToolTests
     {
         var embeddings = new FakeEmbeddingClient();
 
-        var result = await Create(TestIndex.ThreeAxes(), embeddings).ExecuteAsync(Query(query), CancellationToken.None);
+        var result = await Create(TestIndex.ThreeAxes(), embeddings).ExecuteAsync(Query(query), Context, CancellationToken.None);
 
         Assert.IsType<ToolError>(result);
         Assert.Empty(embeddings.Inputs);
@@ -45,7 +48,7 @@ public class SearchDocsToolTests
     public async Task Rejects_an_overlong_query()
     {
         var result = await Create(TestIndex.ThreeAxes(), new FakeEmbeddingClient())
-            .ExecuteAsync(Query(new string('a', SearchDocsTool.MaxQueryLength + 1)), CancellationToken.None);
+            .ExecuteAsync(Query(new string('a', SearchDocsTool.MaxQueryLength + 1)), Context, CancellationToken.None);
 
         Assert.IsType<ToolError>(result);
     }
@@ -56,7 +59,7 @@ public class SearchDocsToolTests
         var embeddings = new FakeEmbeddingClient();
 
         var result = Assert.IsType<DocSearchResult>(
-            await Create(DocIndex.Empty, embeddings).ExecuteAsync(Query("reserve"), CancellationToken.None));
+            await Create(DocIndex.Empty, embeddings).ExecuteAsync(Query("reserve"), Context, CancellationToken.None));
 
         Assert.Empty(result.Results);
         Assert.NotNull(result.Note);
@@ -69,7 +72,7 @@ public class SearchDocsToolTests
         var embeddings = new FakeEmbeddingClient { Failure = new EmbeddingUnavailableException("busy", 429) };
 
         var result = Assert.IsType<DocSearchResult>(
-            await Create(TestIndex.ThreeAxes(), embeddings).ExecuteAsync(Query("reserve"), CancellationToken.None));
+            await Create(TestIndex.ThreeAxes(), embeddings).ExecuteAsync(Query("reserve"), Context, CancellationToken.None));
 
         Assert.Empty(result.Results);
         Assert.Contains("temporarily unavailable", result.Note);

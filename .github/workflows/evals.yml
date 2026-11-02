@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
     inputs:
       min:
-        description: Minimum passing cases (out of 25)
-        default: "23"
+        description: Minimum passing cases (out of 27)
+        default: "25"
         required: true
 
 permissions:
