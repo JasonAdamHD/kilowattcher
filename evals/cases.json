@@ -83,7 +83,8 @@
     "turns": ["How long will my battery last if the power goes out?"],
     "expect": {
       "topic": ["home_energy"],
-      "toolsRequired": ["get_battery_status", "search_docs"],
+      // The number is computed in code (estimate_backup_time); the docs explain and back it.
+      "toolsRequired": ["estimate_backup_time", "search_docs"],
       "citation": "outage-backup#how-long-backup-lasts",
       "mustContain": [["4.2", "4.1", "about 4 hours"]],
       "mustNotContain": ["4.7"]

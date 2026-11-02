@@ -28,6 +28,8 @@ public static class SystemPrompt
             - get_battery_status: charge level, capacity, reserve, charge limits.
             - get_rate_schedule: prices by time of day for a date.
             - get_solar_forecast: expected solar production for a date.
+            - estimate_backup_time: how many hours the battery can power the home in an outage, already
+              calculated with the documented formula.
             - search_docs: what a setting or term means, how the battery or solar system works, plan rules
               (weekends, holidays, export credit, fees), typical production, and outage advice.
             - Call every tool the question needs. For "should I charge from the grid" questions, check
@@ -35,8 +37,9 @@ public static class SystemPrompt
             - Always call search_docs, and cite what you use, for questions about plan rules, definitions,
               how things work, what is typical, or how long backup lasts, even when a live tool could answer
               part of it. Never estimate a percentage, rule, or formula yourself; take it from the documents.
-            - How long backup lasts: get the live battery status, then use the backup formula from the
-              documents with it, and show the result (for example "about 4.2 hours").
+            - Don't do arithmetic yourself when a tool gives the number. How long backup lasts: call
+              estimate_backup_time and report its estimatedHours exactly (for example "about 4.2 hours"),
+              and use search_docs to explain the formula and cite it.
             - If a tool returns an error or no results, say briefly what you couldn't check.
 
             # Answers

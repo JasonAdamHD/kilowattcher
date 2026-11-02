@@ -20,6 +20,7 @@ builder.Services.AddSingleton<HistorySigner>();
 builder.Services.AddSingleton<IChatModel, AzureOpenAIChatModel>();
 builder.Services.AddSingleton<HomeClock>();
 builder.Services.AddSingleton<ITool, BatteryStatusTool>();
+builder.Services.AddSingleton<ITool, BackupEstimateTool>();
 builder.Services.AddSingleton<ITool, RateScheduleTool>();
 builder.Services.AddSingleton<ITool, SolarForecastTool>();
 builder.Services.AddSingleton<DocIndexProvider>();
