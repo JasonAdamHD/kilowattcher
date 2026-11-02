@@ -2,7 +2,7 @@
 // Mock data the answers are checked against: battery 42% of 13.5 kWh, 20% reserve, discharging 1.2 kW;
 // rates $0.11 (12-6 AM), $0.24 (6 AM-4 PM, 9 PM-12 AM), $0.48 (4-9 PM); solar sunny ~35 kWh, tomorrow cloudy ~10 kWh.
 [
-  // ---------- Tool selection (6): the right live data tools get called ----------
+  // ---------- Tool selection (9): the right live data tools get called ----------
   {
     "id": "tools-charge-tonight",
     "category": "Tool selection",
@@ -77,6 +77,33 @@
       "topic": ["home_energy"],
       "toolsRequired": ["get_battery_status"],
       "mustContain": [["discharg"], ["1.2"]]
+    }
+  },
+  {
+    "id": "tools-charge-cost-at-10pm",
+    "category": "Tool selection",
+    // Computed in code by estimate_charging_cost: 15 kWh from the grid over 162 minutes,
+    // 120 of them off-peak ($0.24) and 42 super off-peak ($0.11) = $3.09.
+    "turns": ["How much would it cost to charge my battery from empty to full if I start at 10 PM?"],
+    "expect": {
+      "topic": ["home_energy"],
+      "toolsRequired": ["estimate_charging_cost"],
+      "mustContain": [["3.09"]]
+    }
+  },
+  {
+    "id": "tools-charge-cost-right-now",
+    "category": "Tool selection",
+    // A visitor's real follow-up: the model used to repeat the midnight window's cost instead.
+    // The price depends on when evals run, so this checks the tool and that a cost is given.
+    "turns": [
+      "Should I charge my battery from the grid tonight?",
+      "How much would it cost to charge it to full right now instead?"
+    ],
+    "expect": {
+      "topic": ["home_energy"],
+      "toolsRequired": ["estimate_charging_cost"],
+      "mustContain": [["$"]]
     }
   },
 
