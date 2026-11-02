@@ -19,7 +19,7 @@ A home energy assistant built on Azure OpenAI. A homeowner asks "Should I charge
 
 Every answer shows chips for the tools it used (tap one to see the raw call and result) and numbered citations for the documents behind it.
 
-**Per-visitor settings.** A settings panel (a side panel that pops in and out on desktop, a sheet behind a gear button on phones) lets each visitor change, and the browser remembers: battery model (VoltNest 13 or the rival Helio PowerCell 10), current charge, home location (any US city name or ZIP code via Open-Meteo geocoding, or one-tap Phoenix, Seattle, Miami, New York; live weather and local time follow it), and the three time-of-use prices. Defaults live in `appsettings.json` ("Household"); every tool computes from the visitor's household, and search only returns the manual for *their* battery.
+**Per-visitor settings.** A settings panel (a side panel that pops in and out on desktop, a sheet behind a gear button on phones) lets each visitor change, and the browser remembers: battery model (VoltNest 13 or the rival Helio PowerCell 10), current charge, battery drain (0 kW idle up to that model's max discharge), home location (any US city name or ZIP code via Open-Meteo geocoding, or one-tap Phoenix, Seattle, Miami, New York; live weather and local time follow it), and the three time-of-use prices. Defaults live in `appsettings.json` ("Household"); every tool computes from the visitor's household, and search only returns the manual for *their* battery.
 
 ## Architecture
 

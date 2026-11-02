@@ -41,6 +41,8 @@ export type Place = {
 export type HouseholdSettings = {
   battery?: string
   stateOfChargePercent?: number
+  /** The home's draw on the battery in kW, 0 (idle) up to the model's max discharge. */
+  loadKw?: number
   /** A preset city id, or... */
   city?: string
   /** ...a searched place. Never both. */
@@ -51,11 +53,12 @@ export type HouseholdSettings = {
 }
 
 export type SettingsOptions = {
-  batteries: { id: string; name: string; capacityKwh: number; maxChargeKw: number; roundTripEfficiency: number }[]
+  batteries: { id: string; name: string; capacityKwh: number; maxChargeKw: number; maxDischargeKw: number; roundTripEfficiency: number }[]
   cities: { id: string; city: string }[]
   defaults: {
     battery: string
     stateOfChargePercent: number
+    loadKw: number
     city: string | null
     cityName: string
     superOffPeakPrice: number
