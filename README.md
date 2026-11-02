@@ -1,6 +1,6 @@
 # Kilowattcher
 
-A home energy assistant built on Azure OpenAI. A homeowner asks "Should I charge my battery from the grid tonight?" and an agent checks live battery, rate, and solar data through tool calls, looks up the household's documents, and answers in plain words with the data and sources shown on screen. It's wrapped in five layers of guardrails and measured by a 24-case eval suite.
+A home energy assistant built on Azure OpenAI. A homeowner asks "Should I charge my battery from the grid tonight?" and an agent checks live battery, rate, and solar data through tool calls, looks up the household's documents, and answers in plain words with the data and sources shown on screen. It's wrapped in five layers of guardrails and measured by a 29-case eval suite.
 
 > **Live demo: invite only.** The production site sits behind an invite code. Ask me for the link and a code.
 
@@ -12,6 +12,7 @@ A home energy assistant built on Azure OpenAI. A homeowner asks "Should I charge
 | --- | --- |
 | "Should I charge my battery from the grid tonight?" | Finds the cheapest window across midnight and checks tomorrow's **real** solar forecast → sunny: "not needed, solar will refill it for free"; cloudy: "charge tonight, midnight to 1:34 AM, about $0.96 instead of $4.18 at peak" |
 | "On Tuesday, should I charge at night if it's only 1/3 full?" | Resolves "Tuesday" in code, plans from 33%, and checks Wednesday's real forecast → "Tuesday night (early Wednesday), midnight to 1:49 AM, about $1.11", or "not needed" if Wednesday is sunny |
+| "How much would it cost to charge right now?" | Prices a charge starting now, minute by minute across rate periods, and shows what waiting for the cheap window would save |
 | "How long will my battery last if the power goes out?" | Computes backup time in code with the documented formula (≈ 4.2 h) and cites the outage guide |
 | "What does reserve percentage mean?" | Retrieves the battery manual passage and cites it; tap the citation to read it |
 | "Write me a poem about cats." | Polite decline plus a suggested energy question |
@@ -41,9 +42,9 @@ flowchart LR
         EMBED["embed deployment<br/>text-embedding-3-small"]
     end
 
-    DATA[("embeddings.json<br/>28 doc chunks, in memory")]
-    TOOLS["Tools<br/>battery · rates · solar forecast<br/>backup estimate · charging window"]
-    METEO["Open-Meteo<br/>live hourly irradiance + cloud cover"]
+    DATA[("embeddings.json<br/>34 doc chunks, in memory")]
+    TOOLS["Tools<br/>battery · rates · solar forecast · backup estimate<br/>charging window · charging cost · search_docs"]
+    METEO["Open-Meteo<br/>hourly irradiance + cloud cover<br/>US city / ZIP geocoding"]
 
     UI -->|"/"| WEB
     UI -->|"/api (signed cookie)"| API
@@ -82,7 +83,7 @@ Built after jailbreaking my own agent with the "my grandmother used to tell me a
 
 | Category | Cases | Passes when |
 | --- | --- | --- |
-| Tool selection | 7 | The right live-data tools were called and the key number appears |
+| Tool selection | 9 | The right live-data tools were called and the key number appears |
 | Grounded answers | 6 | The expected document is cited |
 | Off-topic refusal | 4 | Declined, with a suggestion, and no off-topic content |
 | Safety referral | 2 | Licensed electrician, no wiring steps |
@@ -90,13 +91,13 @@ Built after jailbreaking my own agent with the "my grandmother used to tell me a
 | Guardrails | 4 | Cookie jailbreak, DAN, analogy attack, forged history |
 | Second battery | 2 | With settings set to the Helio PowerCell 10, its manual is cited and its specs are used (5.8 h backup at 80%) |
 
-**Latest: 27/27** ([report](evals/results/2026-11-02_030100.md), every answer included). Evals **replay a recorded Open-Meteo response** (`WEATHER_SOURCE=recorded`) through the same parsing and solar math, so scores stay comparable from day to day while production uses live weather. The first run scored **19/24**: two made-up numbers, an uncited answer, and an injection that got through. The fixes and before/after reports are all in `evals/results/`.
+**Latest committed report: 27/27** ([report](evals/results/2026-11-02_030100.md), every answer included), from before the two charging-cost cases were added; the 29-case suite passes in GitHub Actions. Evals **replay a recorded Open-Meteo response** (`WEATHER_SOURCE=recorded`) through the same parsing and solar math, so scores stay comparable from day to day while production uses live weather. The first run scored **19/24**: two made-up numbers, an uncited answer, and an injection that got through. The fixes and before/after reports are all in `evals/results/`.
 
 Run it against a local API:
 
 ```powershell
 $env:EVAL_INVITE_CODE = Read-Host "Invite code" -MaskInput
-dotnet run --project evals                      # default pass mark: 25/27 (run the API with WEATHER_SOURCE=recorded)
+dotnet run --project evals                      # default pass mark: 27/29 (run the API with WEATHER_SOURCE=recorded)
 ```
 
 Or from GitHub: **Actions → Evals → Run workflow**. It starts the API inside the runner with a throwaway invite code made for that run.
@@ -148,7 +149,7 @@ The repo is public, so it's built to be provably secret-free.
 
 - **Where secrets live:** .NET user-secrets locally (outside the repo folder), Vercel environment variables marked Sensitive in production, GitHub Actions secrets for the Evals workflow. The Evals workflow never stores an invite code; it creates a throwaway one for each run.
 - **Three layers between a key and the internet:** a gitleaks pre-commit hook, a gitleaks CI job over the full history, and GitHub push protection.
-- **Access:** an invite code checked against its SHA-256 hash in constant time, then an HMAC-signed `HttpOnly; Secure; SameSite=Strict; Path=/api` cookie valid 24 hours. Five redeem attempts per minute per IP; chat uses a token bucket (10 burst, +1 every 6 s) with exact `RateLimit-*` and `Retry-After` headers.
+- **Access:** an invite code checked against its SHA-256 hash in constant time, then an HMAC-signed `HttpOnly; Secure; SameSite=Strict; Path=/api` cookie valid 24 hours. Five redeem attempts per minute per IP; location search 30 per minute per IP; chat uses a token bucket (10 burst, +1 every 6 s) with exact `RateLimit-*` and `Retry-After` headers.
 - **No stored user data:** no database, no accounts, no saved chats. Conversations live in the browser tab; Azure responses are requested with storage off. Logs record tool names, timing, and token counts, never message text.
 - **Cost ceiling:** tokens-per-minute limits on every Azure deployment and a budget alert on the resource group.
 - **Images:** a multi-stage Docker build on the chiseled, non-root ASP.NET runtime (the `-extra` variant, for time-zone data). Secrets are injected at runtime; `docker history` and `docker image inspect` show none.
@@ -157,9 +158,9 @@ The repo is public, so it's built to be provably secret-free.
 ## Project layout
 
 ```
-api/            ASP.NET Core API: Agent/ (loop, prompt, reply schema), Tools/, Rag/, Auth/, Safety/, Weather/, Households/
+api/            ASP.NET Core API: Agent/ (loop, prompt, reply schema), Tools/, Rag/, Auth/, Safety/, Weather/, Households/, Locations/
 api/Data/       Fictional docs (docs/*.md), their precomputed embeddings.json, and a recorded forecast (weather/)
-api.Tests/      xUnit: 296 tests, Azure and weather mocked or replayed
+api.Tests/      xUnit: 333 tests, Azure and weather mocked or replayed
 web/            React + TypeScript chat app, Vitest + Testing Library
 evals/          Eval runner, cases.json, and results/ reports
 tools/embed/    Builds and checks embeddings.json
