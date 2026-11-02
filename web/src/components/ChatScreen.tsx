@@ -259,7 +259,7 @@ function describeFailure(failure: Failure): { text: string; canRetry: boolean } 
     case 'offline':
       return { text: 'You appear to be offline.', canRetry: true }
     case 'bad_request':
-      if (failure.error && ['unknown_battery', 'invalid_charge', 'unknown_city', 'invalid_price'].includes(failure.error)) {
+      if (failure.error && ['unknown_battery', 'invalid_charge', 'unknown_city', 'invalid_location', 'invalid_price'].includes(failure.error)) {
         return { text: "Some settings aren't valid. Check the settings panel, or reset to defaults.", canRetry: false }
       }
       return failure.error === 'invalid_history'

@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef } from 'react'
 import type { HouseholdSettings, SettingsOptions } from '../api'
-import { priceError, toRequest, useSettings, type PriceField } from '../settings'
+import { homeName, priceError, toRequest, useSettings, type PriceField } from '../settings'
+import { LocationPicker } from './LocationPicker'
 
 type Props = {
   options: SettingsOptions
@@ -97,27 +98,14 @@ export function SettingsPanel({ options, open, onClose, onChange }: Props) {
           />
         </div>
 
-        <div className="field">
-          <label className="field__label" htmlFor={`${id}-city`}>
-            City
-          </label>
-          <select
-            id={`${id}-city`}
-            className="input"
-            value={values.city}
-            onChange={(e) => update({ city: e.target.value })}
-            aria-describedby={`${id}-city-help`}
-          >
-            {options.cities.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.city}
-              </option>
-            ))}
-          </select>
-          <span id={`${id}-city-help`} className="helper">
-            Live weather and local time follow the city.
-          </span>
-        </div>
+        <LocationPicker
+          options={options}
+          city={values.city}
+          location={values.location}
+          current={homeName(values, options)}
+          onPickCity={(city) => update({ city, location: null })}
+          onPickPlace={(location) => update({ location })}
+        />
 
         <fieldset className="field settings__prices">
           <legend className="field__label">Electricity prices ($ per kWh)</legend>

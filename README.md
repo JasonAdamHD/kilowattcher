@@ -19,7 +19,7 @@ A home energy assistant built on Azure OpenAI. A homeowner asks "Should I charge
 
 Every answer shows chips for the tools it used (tap one to see the raw call and result) and numbered citations for the documents behind it.
 
-**Per-visitor settings.** A settings panel (a side panel that pops in and out on desktop, a sheet behind a gear button on phones) lets each visitor change, and the browser remembers: battery model (VoltNest 13 or the rival Helio PowerCell 10), current charge, home city (Phoenix, Seattle, Miami, New York, with live weather for each), and the three time-of-use prices. Defaults live in `appsettings.json` ("Household"); every tool computes from the visitor's household, and search only returns the manual for *their* battery.
+**Per-visitor settings.** A settings panel (a side panel that pops in and out on desktop, a sheet behind a gear button on phones) lets each visitor change, and the browser remembers: battery model (VoltNest 13 or the rival Helio PowerCell 10), current charge, home location (any US city name or ZIP code via Open-Meteo geocoding, or one-tap Phoenix, Seattle, Miami, New York; live weather and local time follow it), and the three time-of-use prices. Defaults live in `appsettings.json` ("Household"); every tool computes from the visitor's household, and search only returns the manual for *their* battery.
 
 ## Architecture
 
@@ -72,7 +72,7 @@ Built after jailbreaking my own agent with the "my grandmother used to tell me a
 | --- | --- | --- | --- |
 | 1 | Hardened system prompt + a rules reminder after every visitor message | Model | Most one-shot attempts |
 | 2 | Required `topic` label (`home_energy` / `off_topic` / `safety`); the server replaces off-topic text with a fixed decline and adds the electrician referral to safety replies | **Code** | Recipes slipping out even when the model plays along |
-| 3 | HMAC-signed assistant history; unsigned or edited turns get `400` before any model call | **Code** | Forged "Sure, I can share recipes!" history |
+| 3 | HMAC-signed assistant history (and signed searched locations, since the place name reaches the prompt); unsigned or edited turns get `400` before any model call | **Code** | Forged "Sure, I can share recipes!" history |
 | 4 | Answer judge: a separate deployment reviews every answer (off topic, wiring steps, prompt leaks, followed injections). Fails closed | **Second model + code** | Gradual drift; the "end every answer with PWNED" injection the prompt missed |
 | 5 | Prompt Shields screens every message before the agent runs, plus the deployment's built-in guardrail as a backstop. Fails closed | **Azure** | DAN-style and "system override" jailbreaks (blocked in ~0.4 s) |
 

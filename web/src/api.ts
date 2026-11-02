@@ -28,11 +28,23 @@ export type HistoryMessage =
   | { role: 'user'; content: string }
   | { role: 'assistant'; content: string; signature: string }
 
+/** A US place from the location search, signed by the API so only real place names reach the prompt. */
+export type Place = {
+  name: string
+  latitude: number
+  longitude: number
+  timeZone: string
+  signature: string
+}
+
 /** What the settings panel can change. Fields left out keep the household defaults. */
 export type HouseholdSettings = {
   battery?: string
   stateOfChargePercent?: number
+  /** A preset city id, or... */
   city?: string
+  /** ...a searched place. Never both. */
+  location?: Place
   superOffPeakPrice?: number
   offPeakPrice?: number
   peakPrice?: number
@@ -138,6 +150,9 @@ export const api = {
     ),
 
   settingsOptions: () => request<SettingsOptions>('/api/settings/options', { method: 'GET' }, DEFAULT_TIMEOUT_MS),
+
+  searchLocations: (query: string) =>
+    request<{ results: Place[] }>(`/api/locations/search?q=${encodeURIComponent(query)}`, { method: 'GET' }, DEFAULT_TIMEOUT_MS),
 
   chat: (message: string, history: HistoryMessage[], settings?: HouseholdSettings) =>
     request<ChatReply>(

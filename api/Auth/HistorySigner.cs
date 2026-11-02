@@ -12,28 +12,11 @@ namespace Kilowattcher.Api.Auth;
 /// </summary>
 public sealed class HistorySigner
 {
-    private static readonly byte[] Purpose = Encoding.ASCII.GetBytes("kilowattcher-history-v1");
-
     private readonly byte[]? _key;
 
     public HistorySigner(IConfiguration configuration)
     {
-        var raw = configuration["SESSION_SIGNING_KEY"];
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            return;
-        }
-
-        try
-        {
-            var sessionKey = Convert.FromBase64String(raw.Trim());
-            // A separate key per purpose: a history signature can never be replayed as a session cookie.
-            _key = sessionKey.Length >= 32 ? HMACSHA256.HashData(sessionKey, Purpose) : null;
-        }
-        catch (FormatException)
-        {
-            _key = null;
-        }
+        _key = SigningKeys.Derive(configuration, "kilowattcher-history-v1");
     }
 
     public string Sign(string answer)

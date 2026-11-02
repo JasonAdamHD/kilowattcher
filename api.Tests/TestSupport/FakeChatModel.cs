@@ -81,3 +81,31 @@ public sealed class FakePromptShield : Kilowattcher.Api.Safety.IPromptShield
         return Task.FromResult(IsAttack(message));
     }
 }
+
+/// <summary>Returns canned places (Austin and Seattle by default) instead of calling Open-Meteo.</summary>
+public sealed class FakeLocationSearch : Kilowattcher.Api.Locations.ILocationSearch
+{
+    public static readonly Kilowattcher.Api.Locations.Place Austin = new("Austin, Texas", 30.2672, -97.7431, "America/Chicago");
+    public static readonly Kilowattcher.Api.Locations.Place Seattle = new("Seattle, Washington", 47.6062, -122.3321, "America/Los_Angeles");
+
+    public List<string> Queries { get; } = [];
+
+    public bool Unavailable { get; set; }
+
+    public Task<IReadOnlyList<Kilowattcher.Api.Locations.Place>> SearchAsync(string query, CancellationToken cancellationToken)
+    {
+        Queries.Add(query);
+        if (Unavailable)
+        {
+            throw new Kilowattcher.Api.Locations.LocationSearchUnavailableException("down");
+        }
+
+        IReadOnlyList<Kilowattcher.Api.Locations.Place> places = query switch
+        {
+            "98101" or "Seattle" => [Seattle],
+            _ when query.StartsWith("Aus", StringComparison.OrdinalIgnoreCase) => [Austin],
+            _ => [],
+        };
+        return Task.FromResult(places);
+    }
+}
