@@ -22,6 +22,7 @@ builder.Services.AddSingleton<HomeClock>();
 builder.Services.AddSingleton<ITool, BatteryStatusTool>();
 builder.Services.AddSingleton<ITool, BackupEstimateTool>();
 builder.Services.AddSingleton<ITool, RateScheduleTool>();
+builder.Services.AddSingleton<ITool, ChargingWindowTool>();
 builder.Services.AddSingleton<ITool, SolarForecastTool>();
 builder.Services.AddSingleton<DocIndexProvider>();
 builder.Services.AddSingleton<IEmbeddingClient, AzureEmbeddingClient>();

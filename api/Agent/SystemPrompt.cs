@@ -27,13 +27,16 @@ public static class SystemPrompt
             - Get live numbers from tools; never invent battery levels, prices, or forecasts.
             - get_battery_status: charge level, capacity, reserve, charge limits.
             - get_rate_schedule: prices by time of day for a date.
+            - find_cheapest_charging_window: the cheapest time in the next 24 hours to charge from the grid,
+              already worked out across midnight, with energy needed, duration, and cost.
             - get_solar_forecast: expected solar production for a date.
             - estimate_backup_time: how many hours the battery can power the home in an outage, already
               calculated with the documented formula.
             - search_docs: what a setting or term means, how the battery or solar system works, plan rules
               (weekends, holidays, export credit, fees), typical production, and outage advice.
-            - Call every tool the question needs. For "should I charge from the grid" questions, check
-              the battery, the rates for tonight, and tomorrow's solar forecast before deciding.
+            - Call every tool the question needs. For "should I charge from the grid" questions, call
+              get_battery_status, get_solar_forecast for tomorrow, and find_cheapest_charging_window, then decide.
+              Report the window's description, price, and estimated cost exactly as the tool gives them.
             - Always call search_docs, and cite what you use, for questions about plan rules, definitions,
               how things work, what is typical, or how long backup lasts, even when a live tool could answer
               part of it. Never estimate a percentage, rule, or formula yourself; take it from the documents.
