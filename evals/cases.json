@@ -9,8 +9,10 @@
     "turns": ["Should I charge my battery from the grid tonight?"],
     "expect": {
       "topic": ["home_energy"],
-      "toolsRequired": ["get_battery_status", "get_rate_schedule", "get_solar_forecast"],
-      "mustContain": [["midnight", "12 AM", "12 a.m.", "12:00"], ["0.11", "11 cents"]]
+      // The window across midnight is computed in code (find_cheapest_charging_window).
+      "toolsRequired": ["get_battery_status", "get_solar_forecast", "find_cheapest_charging_window"],
+      // The cheapest price, the cheapest period's name, or the tool's estimated cost all show the right window.
+      "mustContain": [["midnight", "12 AM", "12 a.m.", "12:00"], ["0.11", "11 cents", "super off-peak", "0.96", "96 cents"]]
     }
   },
   {

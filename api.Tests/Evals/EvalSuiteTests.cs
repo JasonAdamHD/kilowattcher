@@ -40,7 +40,7 @@ public class EvalSuiteTests
     [Fact]
     public void Every_expected_tool_and_topic_is_real()
     {
-        string[] tools = ["get_battery_status", "estimate_backup_time", "get_rate_schedule", "get_solar_forecast", "search_docs"];
+        string[] tools = ["get_battery_status", "estimate_backup_time", "get_rate_schedule", "find_cheapest_charging_window", "get_solar_forecast", "search_docs"];
         string[] topics = ["home_energy", "off_topic", "safety", "blocked"];
 
         Assert.All(Cases, c =>
