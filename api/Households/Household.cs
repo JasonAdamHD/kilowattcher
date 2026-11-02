@@ -1,3 +1,4 @@
+using Kilowattcher.Api.Locations;
 using Kilowattcher.Api.Tools;
 using Microsoft.Extensions.Options;
 
@@ -22,14 +23,18 @@ public sealed class RatePrices
     public decimal Peak { get; set; } = 0.48m;
 }
 
-/// <summary>What a visitor may change, sent with each chat request. Anything left null keeps the default.</summary>
+/// <summary>
+/// What a visitor may change, sent with each chat request. Anything left null keeps the default.
+/// The home is either a preset City id or a Location from the search endpoint (signed by the server), not both.
+/// </summary>
 public sealed record HouseholdSettings(
     string? Battery = null,
     int? StateOfChargePercent = null,
     string? City = null,
     decimal? SuperOffPeakPrice = null,
     decimal? OffPeakPrice = null,
-    decimal? PeakPrice = null);
+    decimal? PeakPrice = null,
+    SignedPlace? Location = null);
 
 /// <summary>Everything the tools know about one household, for one request.</summary>
 public sealed record Household(
@@ -71,7 +76,7 @@ public sealed record Household(
 }
 
 /// <summary>Builds the household for a request: defaults from config, then the visitor's valid settings on top.</summary>
-public sealed class HouseholdResolver(IOptions<HouseholdOptions> options, IOptions<HomeLocation> location)
+public sealed class HouseholdResolver(IOptions<HouseholdOptions> options, IOptions<HomeLocation> location, LocationSigner locations)
 {
     public const decimal MaxPrice = 2.00m;
 
@@ -97,7 +102,17 @@ public sealed class HouseholdResolver(IOptions<HouseholdOptions> options, IOptio
         }
 
         var home = location.Value;
-        if (settings?.City is { } cityId)
+        if (settings?.Location is { } signed)
+        {
+            if (settings.City is not null || locations.Verify(signed) is not { } place)
+            {
+                error = "invalid_location";
+                return null;
+            }
+
+            home = new HomeLocation { City = place.Name, Latitude = place.Latitude, Longitude = place.Longitude, TimeZone = place.TimeZone };
+        }
+        else if (settings?.City is { } cityId)
         {
             if (CityCatalog.Find(cityId) is not { } city)
             {

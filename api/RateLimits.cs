@@ -9,6 +9,11 @@ namespace Kilowattcher.Api;
 public static class RateLimits
 {
     public const string RedeemPolicy = "redeem";
+    public const string LocationSearchPolicy = "location-search";
+
+    // Location search: the panel searches as the visitor types (debounced), so it gets its own, roomier
+    // fixed window instead of spending chat tokens.
+    public const int LocationSearchPerMinute = 30;
 
     // Redeem: built-in fixed window. A burst of wrong codes locks the visitor out for the rest
     // of the minute, matching the "Too many tries. Wait a minute" screen.
@@ -44,6 +49,14 @@ public static class RateLimits
                 {
                     PermitLimit = RedeemPerMinute,
                     Window = RedeemWindow,
+                    QueueLimit = 0,
+                }));
+
+            options.AddPolicy(LocationSearchPolicy, http =>
+                RateLimitPartition.GetFixedWindowLimiter(ClientIp(http), _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = LocationSearchPerMinute,
+                    Window = TimeSpan.FromMinutes(1),
                     QueueLimit = 0,
                 }));
         });

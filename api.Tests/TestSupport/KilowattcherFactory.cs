@@ -29,6 +29,8 @@ public sealed class KilowattcherFactory : WebApplicationFactory<Program>
 
     public FakePromptShield Shield { get; } = new();
 
+    public FakeLocationSearch Locations { get; } = new();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -45,6 +47,7 @@ public sealed class KilowattcherFactory : WebApplicationFactory<Program>
                 TestWeather.Recorded());
             services.AddSingleton<Kilowattcher.Api.Safety.IAnswerJudge>(Judge);
             services.AddSingleton<Kilowattcher.Api.Safety.IPromptShield>(Shield);
+            services.AddSingleton<Kilowattcher.Api.Locations.ILocationSearch>(Locations);
             services.AddSingleton(TestIndex.Provider(TestIndex.ThreeAxes()));
         });
     }

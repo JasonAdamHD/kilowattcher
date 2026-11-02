@@ -1,11 +1,14 @@
 import { useCallback, useState } from 'react'
-import type { HouseholdSettings, SettingsOptions } from './api'
+import type { HouseholdSettings, Place, SettingsOptions } from './api'
 
 /** What the panel shows. Prices are kept as typed text so a half-typed "0." isn't lost. */
 export type SettingsValues = {
   battery: string
   stateOfChargePercent: number
+  /** The preset city id; ignored while a searched location is set. */
   city: string
+  /** A place from the search box, or null to use the preset city. */
+  location: Place | null
   superOffPeakPrice: string
   offPeakPrice: string
   peakPrice: string
@@ -21,6 +24,7 @@ export function defaultValues(options: SettingsOptions): SettingsValues {
     battery: d.battery,
     stateOfChargePercent: d.stateOfChargePercent,
     city: d.city ?? options.cities[0]?.id ?? '',
+    location: null,
     superOffPeakPrice: d.superOffPeakPrice.toFixed(2),
     offPeakPrice: d.offPeakPrice.toFixed(2),
     peakPrice: d.peakPrice.toFixed(2),
@@ -45,7 +49,8 @@ export function toRequest(values: SettingsValues, options: SettingsOptions): Hou
   const out: HouseholdSettings = {}
   if (values.battery !== d.battery) out.battery = values.battery
   if (values.stateOfChargePercent !== d.stateOfChargePercent) out.stateOfChargePercent = values.stateOfChargePercent
-  if (values.city !== d.city) out.city = values.city
+  if (values.location) out.location = values.location
+  else if (values.city !== d.city) out.city = values.city
   for (const field of ['superOffPeakPrice', 'offPeakPrice', 'peakPrice'] as const) {
     if (!priceError(values[field], options.maxPrice) && Number(values[field]) !== Number(d[field])) {
       out[field] = Math.round(Number(values[field]) * 100) / 100
@@ -65,6 +70,7 @@ function load(options: SettingsOptions): SettingsValues {
       ...saved,
       battery: options.batteries.some((b) => b.id === saved.battery) ? saved.battery! : defaults.battery,
       city: options.cities.some((c) => c.id === saved.city) ? saved.city! : defaults.city,
+      location: isPlace(saved.location) ? saved.location : null,
       stateOfChargePercent:
         typeof saved.stateOfChargePercent === 'number' && saved.stateOfChargePercent >= 0 && saved.stateOfChargePercent <= 100
           ? saved.stateOfChargePercent
@@ -73,6 +79,24 @@ function load(options: SettingsOptions): SettingsValues {
   } catch {
     return defaults
   }
+}
+
+/** A saved place must have every field; the server checks its signature on each question. */
+function isPlace(value: unknown): value is Place {
+  if (typeof value !== 'object' || value === null) return false
+  const p = value as Record<string, unknown>
+  return (
+    typeof p.name === 'string' &&
+    typeof p.latitude === 'number' &&
+    typeof p.longitude === 'number' &&
+    typeof p.timeZone === 'string' &&
+    typeof p.signature === 'string'
+  )
+}
+
+/** The home's name for display: the searched place, else the preset city. */
+export function homeName(values: SettingsValues, options: SettingsOptions): string {
+  return values.location?.name ?? options.cities.find((c) => c.id === values.city)?.city ?? options.defaults.cityName
 }
 
 function save(values: SettingsValues) {

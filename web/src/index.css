@@ -613,6 +613,66 @@ p:last-child {
   gap: var(--space-1);
 }
 
+/* Home location: search box with an inline list of matches, then preset chips. */
+.location__current {
+  margin: 0;
+}
+
+.location__results {
+  margin: var(--space-1) 0 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid color-mix(in srgb, var(--color-muted) 40%, transparent);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.location__results[hidden] {
+  display: none;
+}
+
+.location__result {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.location__result--active {
+  background: color-mix(in srgb, var(--color-solar-amber) 25%, transparent);
+}
+
+.location__presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.chip {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid color-mix(in srgb, var(--color-muted) 40%, transparent);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font: 15px var(--font-body);
+  cursor: pointer;
+}
+
+.chip[aria-pressed='true'] {
+  border-color: var(--color-solar-amber);
+  background: var(--color-solar-amber);
+  color: var(--color-on-amber);
+  font-weight: 600;
+}
+
+.chip:focus-visible {
+  outline: 2px solid var(--color-solar-amber);
+  outline-offset: 2px;
+}
+
 .settings input[type='range'] {
   width: 100%;
   accent-color: var(--color-solar-amber);
